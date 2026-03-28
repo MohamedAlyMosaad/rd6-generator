@@ -46,7 +46,12 @@ for k, v in [('step', 1), ('data', {}), ('visits', []),
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🏗️ RD6 Generator")
+    # SOCOTEC Logo
+    logo_path = BASE / "socotec_logo.png"
+    if logo_path.exists():
+        st.image(str(logo_path), width=160)
+    else:
+        st.markdown("## 🏗️ RD6 Generator")
     st.markdown("**SOCOTEC Arabia · TIS Division**")
     st.markdown("---")
     labels = ["Engineer & Signature", "Policy Upload", "Project Info",
