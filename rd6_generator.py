@@ -937,14 +937,15 @@ def _add_extra_visit_rows(tree, visits):
     if len(visits) <= 4:
         return
 
-    # Locate the visit table by finding the one containing 1stVisit_Ref
-    visit_table = None
     visit_field_tags = {
         '1stVisit_Ref','1stVisit_date','1stVisit_isp','1stVisit_part',
         '2ndVisit_Ref','2ndVisit_Date','2ndVisit_ins','2ndVisit_part',
         '3rdVisit_Ref','3rdVisit_date','3rdVisit_ins','3rdVisit_part',
         '4thVisit_Ref','4thVisit_date','4thVisit_ins','4thVisit_part',
     }
+
+    # Find the visit table
+    visit_table = None
     for tbl in tree.iter(f'{{{W}}}tbl'):
         tags = set()
         for sdt in tbl.iter(f'{{{W}}}sdt'):
@@ -958,9 +959,9 @@ def _add_extra_visit_rows(tree, visits):
     if visit_table is None:
         return
 
-    # Find the data rows (rows with visit content controls)
+    # Use iter() to find ALL rows including those inside SDTs
     data_rows = []
-    for tr in visit_table.findall(f'{{{W}}}tr'):
+    for tr in visit_table.iter(f'{{{W}}}tr'):
         row_tags = set()
         for sdt in tr.iter(f'{{{W}}}sdt'):
             tag_elem = sdt.find(f'.//{{{W}}}tag')
@@ -972,9 +973,11 @@ def _add_extra_visit_rows(tree, visits):
     if not data_rows:
         return
 
-    template_row   = data_rows[-1]
-    tbl_children   = list(visit_table)
-    last_row_idx   = tbl_children.index(template_row)
+    template_row = data_rows[-1]
+    # Use the ACTUAL parent (may be SDT content, not the table directly)
+    actual_parent = template_row.getparent()
+    parent_children = list(actual_parent)
+    last_idx = parent_children.index(template_row)
 
     for i, visit in enumerate(visits[4:], start=4):
         new_row = copy.deepcopy(template_row)
@@ -986,18 +989,30 @@ def _add_extra_visit_rows(tree, visits):
         ]
         for ci, tc in enumerate(new_row.findall(f'{{{W}}}tc')):
             val = cell_values[ci] if ci < len(cell_values) else ''
-            t_elems = list(tc.iter(f'{{{W}}}t'))
-            if t_elems:
-                t_elems[0].text = val
-                for t in t_elems[1:]:
-                    t.text = ''
-                _apply_blue(t_elems[0])
-            # Rename SDT tags to avoid duplicates
-            for sdt in tc.iter(f'{{{W}}}sdt'):
-                tag_elem = sdt.find(f'.//{{{W}}}tag')
-                if tag_elem is not None:
-                    tag_elem.set(f'{{{W}}}val', f'ExtraVisit_{i}_{ci}')
-        visit_table.insert(last_row_idx + 1 + (i - 4), new_row)
+            # Clear all SDTs and replace with a plain run
+            for sdt in list(tc.iter(f'{{{W}}}sdt')):
+                sdt_par = sdt.getparent()
+                if sdt_par is not None:
+                    sdt_idx = list(sdt_par).index(sdt)
+                    p = etree.Element(f'{{{W}}}p')
+                    # Copy paragraph properties from existing paragraph if present
+                    existing_p = sdt.find(f'.//{{{W}}}p')
+                    if existing_p is not None:
+                        existing_pPr = existing_p.find(f'{{{W}}}pPr')
+                        if existing_pPr is not None:
+                            p.append(copy.deepcopy(existing_pPr))
+                    r = etree.SubElement(p, f'{{{W}}}r')
+                    rPr = etree.SubElement(r, f'{{{W}}}rPr')
+                    color = etree.SubElement(rPr, f'{{{W}}}color')
+                    color.set(f'{{{W}}}val', BLUE)
+                    t = etree.SubElement(r, f'{{{W}}}t')
+                    t.text = val
+                    if val and (val[0] == ' ' or val[-1] == ' '):
+                        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+                    sdt_par.remove(sdt)
+                    sdt_par.insert(sdt_idx, p)
+                    break
+        actual_parent.insert(last_idx + 1 + (i - 4), new_row)
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def generate_rd6(template_path, output_path, data, visits,
