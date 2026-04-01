@@ -443,7 +443,7 @@ elif step == 6:
         if st.button("🚀 Generate Report", type="primary"):
             with st.spinner("Building report… (this may take 15–30 seconds for the final repack)"):
                 try:
-with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
                         out = tmp.name
                     extra_cert_bytes = []
                     for ck in ['cost_letter', 'contractor_letter', 'supervision_letter']:
