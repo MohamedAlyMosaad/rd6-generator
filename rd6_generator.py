@@ -1123,11 +1123,12 @@ def generate_rd6(template_path, output_path, data, visits,
                                        encoding='UTF-8', standalone=True)
         file_contents['word/document.xml'] = _fix_xml_declaration(new_with_sig)
 
-    # Replace cert page images (swap image3.png and image4.png)
+# Replace cert page images (swap image3.png and image4.png)
     if insulation_bytes:
         cert_images = _prepare_cert_images(insulation_bytes, insulation_filename)
         file_contents.update(cert_images)
-          # Expand visit table for visits beyond 4
+
+    # Expand visit table for visits beyond 4
     doc_tree_final = etree.fromstring(file_contents['word/document.xml'])
     _add_extra_visit_rows(doc_tree_final, visits)
     final_doc = etree.tostring(doc_tree_final, xml_declaration=True,
@@ -1137,9 +1138,8 @@ def generate_rd6(template_path, output_path, data, visits,
     # Write everything at once using the template as ZIP skeleton
     _write_docx_preserving_metadata(tmp_path, file_contents, output_path)
     os.unlink(tmp_path)
-    return output_path
 
-# Append extra certificates (cost letter, contractor letter, supervision letter)
+    # Append extra certificates (cost letter, contractor letter, supervision letter)
     if extra_cert_bytes:
         img_list = []
         for cert_b, cert_ext in extra_cert_bytes:
@@ -1152,3 +1152,5 @@ def generate_rd6(template_path, output_path, data, visits,
             tmp_extra = output_path + '.extra.docx'
             _append_images(output_path, tmp_extra, img_list)
             os.replace(tmp_extra, output_path)
+
+    return output_path
