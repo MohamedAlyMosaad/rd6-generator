@@ -53,6 +53,7 @@ with st.sidebar:
     else:
         st.markdown("## 🏗️ RD6 Generator")
     st.markdown("**SOCOTEC Arabia · TIS Division**")
+    st.markdown("RD6 Report Generator")
     st.markdown("---")
     labels = ["Engineer & Signature", "Policy Upload", "Project Info",
               "Site Visits", "Requirements", "Generate"]
