@@ -154,9 +154,6 @@ if step == 1:
         st.markdown("---")
         issue_dt  = st.date_input("Report Issue Date", value=date.today())
         issue_str = "{}/{}/{}".format(issue_dt.day, issue_dt.month, issue_dt.year)
-        st.markdown("---")
-        issue_dt  = st.date_input("Report Issue Date", value=date.today())
-        issue_str = "{}/{}/{}".format(issue_dt.day, issue_dt.month, issue_dt.year)
 
     if not st.session_state.sig_bytes:
         st.warning("No signature uploaded — a blank placeholder will remain in the report.")
