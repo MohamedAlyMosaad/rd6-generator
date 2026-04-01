@@ -142,9 +142,9 @@ if step == 1:
         st.info("Upload a transparent PNG of your signature. It will appear under the Author column only.")
         sig_file = st.file_uploader("Signature image (PNG/JPG)",
                                      type=["png","jpg","jpeg"], key="sig_upload")
-        if sig_file:
-            sig_bytes = sig_file.read()          # ← read FIRST
-            st.image(sig_bytes, caption="Preview", width=250)  # then display
+                if sig_file:
+            sig_bytes = sig_file.read()          # ← MOVE THIS LINE FIRST
+            st.image(sig_bytes, caption="Preview", width=250)
             sig_ext = Path(sig_file.name).suffix.lstrip('.').lower()
             st.session_state.sig_bytes = sig_bytes
             st.session_state.sig_ext   = sig_ext
