@@ -932,13 +932,79 @@ def _write_docx_preserving_metadata(template_path, file_contents, output_path):
 
     with open(output_path, 'wb') as f:
         f.write(bytes(raw))
+def _add_extra_visit_rows(tree, visits):
+    """Appends cloned rows to the visits table for visits beyond the 4 template slots."""
+    if len(visits) <= 4:
+        return
 
+    # Locate the visit table by finding the one containing 1stVisit_Ref
+    visit_table = None
+    visit_field_tags = {
+        '1stVisit_Ref','1stVisit_date','1stVisit_isp','1stVisit_part',
+        '2ndVisit_Ref','2ndVisit_Date','2ndVisit_ins','2ndVisit_part',
+        '3rdVisit_Ref','3rdVisit_date','3rdVisit_ins','3rdVisit_part',
+        '4thVisit_Ref','4thVisit_date','4thVisit_ins','4thVisit_part',
+    }
+    for tbl in tree.iter(f'{{{W}}}tbl'):
+        tags = set()
+        for sdt in tbl.iter(f'{{{W}}}sdt'):
+            tag_elem = sdt.find(f'.//{{{W}}}tag')
+            if tag_elem is not None:
+                tags.add(tag_elem.get(f'{{{W}}}val', ''))
+        if '1stVisit_Ref' in tags:
+            visit_table = tbl
+            break
+
+    if visit_table is None:
+        return
+
+    # Find the data rows (rows with visit content controls)
+    data_rows = []
+    for tr in visit_table.findall(f'{{{W}}}tr'):
+        row_tags = set()
+        for sdt in tr.iter(f'{{{W}}}sdt'):
+            tag_elem = sdt.find(f'.//{{{W}}}tag')
+            if tag_elem is not None:
+                row_tags.add(tag_elem.get(f'{{{W}}}val', ''))
+        if row_tags & visit_field_tags:
+            data_rows.append(tr)
+
+    if not data_rows:
+        return
+
+    template_row   = data_rows[-1]
+    tbl_children   = list(visit_table)
+    last_row_idx   = tbl_children.index(template_row)
+
+    for i, visit in enumerate(visits[4:], start=4):
+        new_row = copy.deepcopy(template_row)
+        cell_values = [
+            visit.get('ref', ''),
+            visit.get('date', ''),
+            visit.get('inspector', ''),
+            visit.get('part', ''),
+        ]
+        for ci, tc in enumerate(new_row.findall(f'{{{W}}}tc')):
+            val = cell_values[ci] if ci < len(cell_values) else ''
+            t_elems = list(tc.iter(f'{{{W}}}t'))
+            if t_elems:
+                t_elems[0].text = val
+                for t in t_elems[1:]:
+                    t.text = ''
+                _apply_blue(t_elems[0])
+            # Rename SDT tags to avoid duplicates
+            for sdt in tc.iter(f'{{{W}}}sdt'):
+                tag_elem = sdt.find(f'.//{{{W}}}tag')
+                if tag_elem is not None:
+                    tag_elem.set(f'{{{W}}}val', f'ExtraVisit_{i}_{ci}')
+        visit_table.insert(last_row_idx + 1 + (i - 4), new_row)
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def generate_rd6(template_path, output_path, data, visits,
                  provided_doc_keys,
                  signature_bytes=None, signature_ext='png',
-                 insulation_bytes=None, insulation_filename='cert.pdf'):
+                 insulation_bytes=None, insulation_filename='cert.pdf',
+                 extra_cert_bytes=None):
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
         tmp_path = tmp.name
@@ -1061,8 +1127,28 @@ def generate_rd6(template_path, output_path, data, visits,
     if insulation_bytes:
         cert_images = _prepare_cert_images(insulation_bytes, insulation_filename)
         file_contents.update(cert_images)
+          # Expand visit table for visits beyond 4
+    doc_tree_final = etree.fromstring(file_contents['word/document.xml'])
+    _add_extra_visit_rows(doc_tree_final, visits)
+    final_doc = etree.tostring(doc_tree_final, xml_declaration=True,
+                               encoding='UTF-8', standalone=True)
+    file_contents['word/document.xml'] = _fix_xml_declaration(final_doc)
 
     # Write everything at once using the template as ZIP skeleton
     _write_docx_preserving_metadata(tmp_path, file_contents, output_path)
     os.unlink(tmp_path)
     return output_path
+
+# Append extra certificates (cost letter, contractor letter, supervision letter)
+    if extra_cert_bytes:
+        img_list = []
+        for cert_b, cert_ext in extra_cert_bytes:
+            if cert_ext.lower() == 'pdf':
+                pages = _pdf_to_images(cert_b)
+                img_list.extend((p, 'png') for p in pages)
+            else:
+                img_list.append((cert_b, cert_ext.lstrip('.')))
+        if img_list:
+            tmp_extra = output_path + '.extra.docx'
+            _append_images(output_path, tmp_extra, img_list)
+            os.replace(tmp_extra, output_path)
