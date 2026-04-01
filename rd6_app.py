@@ -380,23 +380,23 @@ elif step == 5:
         with ra:
             f = st.file_uploader(label, type=["pdf","jpg","jpeg","png"],
                                   key="req_{}".format(key), label_visibility="collapsed")
-if f:
-    provided.append(key)
-    if key == 'insulation_cert':
-        ins_bytes = f.read()
-        ins_name  = f.name
-        cert_date = extract_date_from_cert(ins_bytes, ins_name)
-        if cert_date and not st.session_state.data.get('roof_test_date',''):
-            st.session_state.data['roof_test_date'] = cert_date
-            st.caption("📅 Roof test date auto-filled: **{}**".format(cert_date))
-        elif cert_date:
-            st.caption("📅 Date found in cert: {}".format(cert_date))
-    elif key in ['cost_letter', 'contractor_letter', 'supervision_letter']:
-        st.session_state[f'cert_bytes_{key}'] = f.read()
-        st.session_state[f'cert_ext_{key}'] = Path(f.name).suffix.lstrip('.').lower()
-    st.success("✅ {}".format(f.name))
-elif not mandatory:
-    st.caption("Not uploaded → listed as missing in report")
+            if f:
+                provided.append(key)
+                if key == 'insulation_cert':
+                    ins_bytes = f.read()
+                    ins_name  = f.name
+                    cert_date = extract_date_from_cert(ins_bytes, ins_name)
+                    if cert_date and not st.session_state.data.get('roof_test_date',''):
+                        st.session_state.data['roof_test_date'] = cert_date
+                        st.caption("📅 Roof test date auto-filled: **{}**".format(cert_date))
+                    elif cert_date:
+                        st.caption("📅 Date found in cert: {}".format(cert_date))
+                elif key in ['cost_letter', 'contractor_letter', 'supervision_letter']:
+                    st.session_state[f'cert_bytes_{key}'] = f.read()
+                    st.session_state[f'cert_ext_{key}'] = Path(f.name).suffix.lstrip('.').lower()
+                st.success("✅ {}".format(f.name))
+            elif not mandatory:
+                st.caption("Not uploaded → listed as missing in report")
 
     st.session_state.data['provided_doc_keys'] = provided
     if ins_bytes:
