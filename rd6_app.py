@@ -309,10 +309,10 @@ elif step == 4:
     updated, to_del = [], []
     for i, v in enumerate(visits):
         c1,c2,c3,c4,c5 = st.columns([3,2,3,3,1])
-        ref = c1.text_input("", v.get('ref',''),       key="vr{}".format(i), label_visibility="collapsed")
-        dat = c2.text_input("", v.get('date',''),      key="vd{}".format(i), label_visibility="collapsed")
-        isp = c3.text_input("", v.get('inspector',''), key="vi{}".format(i), label_visibility="collapsed")
-        prt = c4.text_input("", v.get('part',''),      key="vp{}".format(i), label_visibility="collapsed")
+        ref = c1.text_input("Ref",       v.get('ref',''),       key="vr{}".format(i), label_visibility="collapsed")
+        dat = c2.text_input("Date",      v.get('date',''),      key="vd{}".format(i), label_visibility="collapsed")
+        isp = c3.text_input("Inspector", v.get('inspector',''), key="vi{}".format(i), label_visibility="collapsed")
+        prt = c4.text_input("Part",      v.get('part',''),      key="vp{}".format(i), label_visibility="collapsed")
         if c5.button("✕", key="vx{}".format(i)):
             to_del.append(i)
         else:
