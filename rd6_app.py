@@ -143,8 +143,8 @@ if step == 1:
         sig_file = st.file_uploader("Signature image (PNG/JPG)",
                                      type=["png","jpg","jpeg"], key="sig_upload")
         if sig_file:
-            st.image(sig_file, caption="Preview", width=250)
-            sig_bytes = sig_file.read()
+            sig_bytes = sig_file.read()          # ← read FIRST
+            st.image(sig_bytes, caption="Preview", width=250)  # then display
             sig_ext = Path(sig_file.name).suffix.lstrip('.').lower()
             st.session_state.sig_bytes = sig_bytes
             st.session_state.sig_ext   = sig_ext
