@@ -978,10 +978,10 @@ def generate_rd6(template_path, output_path, data, visits,
     ]
     for i, (rk, dk, ik, pk) in enumerate(visit_key_map):
         v = visits[i] if i < len(visits) else {}
-        visit_controls[rk] = v.get('ref','')
-        visit_controls[dk] = v.get('date','')
-        visit_controls[ik] = v.get('inspector','')
-        visit_controls[pk] = v.get('part','')
+        visit_controls[rk] = v.get('ref','') or ' '
+        visit_controls[dk] = v.get('date','') or ' '
+        visit_controls[ik] = v.get('inspector','') or ' '
+        visit_controls[pk] = v.get('part','') or ' '
 
     missing_text = build_missing_doc_text(provided_doc_keys)
 
