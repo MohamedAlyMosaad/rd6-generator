@@ -935,13 +935,19 @@ def _write_docx_preserving_metadata(template_path, file_contents, output_path):
 def _add_extra_visit_rows(tree, visits):
     """Appends cloned rows to the visits table for visits beyond the 4 template slots."""
     if len(visits) <= 4:
-        return
+        return  # visits 1–4 are handled by template SDTs directly
 
     visit_field_tags = {
         '1stVisit_Ref','1stVisit_date','1stVisit_isp','1stVisit_part',
         '2ndVisit_Ref','2ndVisit_Date','2ndVisit_ins','2ndVisit_part',
         '3rdVisit_Ref','3rdVisit_date','3rdVisit_ins','3rdVisit_part',
         '4thVisit_Ref','4thVisit_date','4thVisit_ins','4thVisit_part',
+        '5thVisit_Ref','5thVisit_date','5thVisit_ins','5thVisit_part',
+        '6thVisit_Ref','6thVisit_date','6thVisit_ins','6thVisit_part',
+        '7thVisit_Ref','7thVisit_date','7thVisit_ins','7thVisit_part',
+        '8thVisit_Ref','8thVisit_date','8thVisit_ins','8thVisit_part',
+        '9thVisit_Ref','9thVisit_date','9thVisit_ins','9thVisit_part',
+        '10thVisit_Ref','10thVisit_date','10thVisit_ins','10thVisit_part',
     }
 
     # Find the visit table
@@ -989,13 +995,29 @@ def _add_extra_visit_rows(tree, visits):
         ]
         for ci, tc in enumerate(new_row.findall(f'{{{W}}}tc')):
             val = cell_values[ci] if ci < len(cell_values) else ''
-            # Clear all SDTs and replace with a plain run
-            for sdt in list(tc.iter(f'{{{W}}}sdt')):
+
+            # ----------------------------------------------------------
+            # Step 1: wipe ALL existing text in this cell first.
+            # This is critical: if the template row was already filled
+            # (SDTs replaced with plain runs), the SDT loop below won't
+            # fire, and the old text would bleed through — causing the
+            # visit-4 duplication bug.
+            # ----------------------------------------------------------
+            for t_elem in tc.iter(f'{{{W}}}t'):
+                t_elem.text = ''
+
+            # ----------------------------------------------------------
+            # Step 2: try to find an SDT and replace it with a plain run.
+            # If no SDT exists (row was already filled), fall back to
+            # writing into the first paragraph directly.
+            # ----------------------------------------------------------
+            sdts = list(tc.iter(f'{{{W}}}sdt'))
+            if sdts:
+                sdt = sdts[0]
                 sdt_par = sdt.getparent()
                 if sdt_par is not None:
                     sdt_idx = list(sdt_par).index(sdt)
                     p = etree.Element(f'{{{W}}}p')
-                    # Copy paragraph properties from existing paragraph if present
                     existing_p = sdt.find(f'.//{{{W}}}p')
                     if existing_p is not None:
                         existing_pPr = existing_p.find(f'{{{W}}}pPr')
@@ -1011,7 +1033,19 @@ def _add_extra_visit_rows(tree, visits):
                         t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
                     sdt_par.remove(sdt)
                     sdt_par.insert(sdt_idx, p)
-                    break
+            else:
+                # No SDT — row was already converted to plain runs.
+                # Step 1 cleared them; now inject a fresh run with the value.
+                first_p = tc.find(f'.//{{{W}}}p')
+                if first_p is not None:
+                    r = etree.SubElement(first_p, f'{{{W}}}r')
+                    rPr = etree.SubElement(r, f'{{{W}}}rPr')
+                    color = etree.SubElement(rPr, f'{{{W}}}color')
+                    color.set(f'{{{W}}}val', BLUE)
+                    t = etree.SubElement(r, f'{{{W}}}t')
+                    t.text = val
+                    if val and (val[0] == ' ' or val[-1] == ' '):
+                        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
         actual_parent.insert(last_idx + 1 + (i - 4), new_row)
 
 # ── Main entry point ───────────────────────────────────────────────────────────
