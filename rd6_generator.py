@@ -933,7 +933,6 @@ def _write_docx_preserving_metadata(template_path, file_contents, output_path):
     with open(output_path, 'wb') as f:
         f.write(bytes(raw))
 def _add_extra_visit_rows(tree, visits):
-    """Appends new rows to the visits table for visits beyond the 10 template slots."""
     if len(visits) <= 4:
         return
 
@@ -942,19 +941,14 @@ def _add_extra_visit_rows(tree, visits):
         '2ndVisit_Ref','2ndVisit_Date','2ndVisit_ins','2ndVisit_part',
         '3rdVisit_Ref','3rdVisit_date','3rdVisit_ins','3rdVisit_part',
         '4thVisit_Ref','4thVisit_date','4thVisit_ins','4thVisit_part',
-        '5thVisit_Ref','5thVisit_date','5thVisit_ins','5thVisit_part',
-        '6thVisit_Ref','6thVisit_date','6thVisit_ins','6thVisit_part',
-        '7thVisit_Ref','7thVisit_date','7thVisit_ins','7thVisit_part',
-        '8thVisit_Ref','8thVisit_date','8thVisit_ins','8thVisit_part',
-        '9thVisit_Ref','9thVisit_date','9thVisit_ins','9thVisit_part',
-        '10thVisit_Ref','10thVisit_date','10thVisit_ins','10thVisit_part',
     }
-    # Find the visit table
+    fourth_visit_tags = {'4thVisit_Ref','4thVisit_date','4thVisit_ins','4thVisit_part'}
+
     visit_table = None
     for tbl in tree.iter(f'{{{W}}}tbl'):
         for sdt in tbl.iter(f'{{{W}}}sdt'):
             tag_elem = sdt.find(f'.//{{{W}}}tag')
-            if tag_elem is not None and tag_elem.get(f'{{{W}}}val', '') == '1stVisit_Ref':
+            if tag_elem is not None and '1stVisit_Ref' in tag_elem.get(f'{{{W}}}val',''):
                 visit_table = tbl
                 break
         if visit_table is not None:
@@ -963,36 +957,63 @@ def _add_extra_visit_rows(tree, visits):
     if visit_table is None:
         return
 
-    # Find the 4th data row
     data_rows = []
     for tr in visit_table.iter(f'{{{W}}}tr'):
-        row_tags = set()
         for sdt in tr.iter(f'{{{W}}}sdt'):
             tag_elem = sdt.find(f'.//{{{W}}}tag')
-            if tag_elem is not None:
-                row_tags.add(tag_elem.get(f'{{{W}}}val', ''))
-        if row_tags & visit_field_tags:
-            data_rows.append(tr)
+            if tag_elem is not None and tag_elem.get(f'{{{W}}}val','') in visit_field_tags:
+                data_rows.append(tr)
+                break
 
     if not data_rows:
         return
 
-    template_row = data_rows[-1]
-    actual_parent = template_row.getparent()
-    last_idx = list(actual_parent).index(template_row)
+    # ── Find the FIRST (real) 4th visit row ──────────────────────────────────
+    # data_rows[-1] is unreliable if template was contaminated by old deepcopy runs
+    # (extra rows with 4thVisit_Ref SDTs appear after the real 4th row).
+    # We take the FIRST row that has 4thVisit_Ref — that is always the real one.
+    fourth_row = None
+    for tr in data_rows:
+        row_tags = set()
+        for sdt in tr.iter(f'{{{W}}}sdt'):
+            tag_elem = sdt.find(f'.//{{{W}}}tag')
+            if tag_elem is not None:
+                row_tags.add(tag_elem.get(f'{{{W}}}val',''))
+        if row_tags & fourth_visit_tags:
+            fourth_row = tr
+            break
 
-    # ── Extract structural properties only (no content) ──────────────────────
-    # Use iter() to find w:tc regardless of SDT wrapping — this is what
-    # caused findall() to silently return [] and the old wipe to never run.
-    trPr = template_row.find(f'{{{W}}}trPr')
+    if fourth_row is None:
+        return
+
+    actual_parent = fourth_row.getparent()
+    fourth_row_idx = list(actual_parent).index(fourth_row)
+
+    # ── Purge ghost rows (contamination from old deepcopy runs) ──────────────
+    # Any row AFTER the real 4th row that still carries 4thVisit_Ref SDT tags
+    # is a ghost. Remove them so they don't bleed '04' into the output.
+    to_remove = []
+    for child in list(actual_parent)[fourth_row_idx + 1:]:
+        if child.tag != f'{{{W}}}tr':
+            continue
+        for sdt in child.iter(f'{{{W}}}sdt'):
+            tag_elem = sdt.find(f'.//{{{W}}}tag')
+            if tag_elem is not None and tag_elem.get(f'{{{W}}}val','') in fourth_visit_tags:
+                to_remove.append(child)
+                break
+    for ghost in to_remove:
+        actual_parent.remove(ghost)
+
+    # ── Extract structural properties from the real 4th row ──────────────────
+    trPr = fourth_row.find(f'{{{W}}}trPr')
     template_tcPrs = []
-    for tc in template_row.iter(f'{{{W}}}tc'):
+    for tc in fourth_row.iter(f'{{{W}}}tc'):
         tcPr = tc.find(f'{{{W}}}tcPr')
         template_tcPrs.append(copy.deepcopy(tcPr) if tcPr is not None else None)
         if len(template_tcPrs) == 4:
             break
 
-    # ── Build each extra row from scratch — never copies visit content ────────
+    # ── Build extra rows from scratch ─────────────────────────────────────────
     for i, visit in enumerate(visits[4:], start=4):
         cell_values = [
             visit.get('ref', ''),
@@ -1000,31 +1021,24 @@ def _add_extra_visit_rows(tree, visits):
             visit.get('inspector', ''),
             visit.get('part', ''),
         ]
-
         new_row = etree.Element(f'{{{W}}}tr')
         if trPr is not None:
             new_row.append(copy.deepcopy(trPr))
-
         for ci in range(4):
             val = cell_values[ci] if ci < len(cell_values) else ''
             tc = etree.SubElement(new_row, f'{{{W}}}tc')
-
-            # Restore cell formatting (width, borders, shading)
             if ci < len(template_tcPrs) and template_tcPrs[ci] is not None:
                 tc.append(copy.deepcopy(template_tcPrs[ci]))
-
-            # Fresh paragraph — no old content to bleed through
-            p  = etree.SubElement(tc, f'{{{W}}}p')
-            r  = etree.SubElement(p,  f'{{{W}}}r')
-            rPr = etree.SubElement(r, f'{{{W}}}rPr')
-            color_el = etree.SubElement(rPr, f'{{{W}}}color')
-            color_el.set(f'{{{W}}}val', BLUE)
-            t  = etree.SubElement(r,  f'{{{W}}}t')
+            p   = etree.SubElement(tc,  f'{{{W}}}p')
+            r   = etree.SubElement(p,   f'{{{W}}}r')
+            rPr = etree.SubElement(r,   f'{{{W}}}rPr')
+            col = etree.SubElement(rPr, f'{{{W}}}color')
+            col.set(f'{{{W}}}val', BLUE)
+            t   = etree.SubElement(r,   f'{{{W}}}t')
             t.text = val
             if val and (val[0] == ' ' or val[-1] == ' '):
                 t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-
-        actual_parent.insert(last_idx + 1 + (i - 4), new_row)
+        actual_parent.insert(fourth_row_idx + 1 + (i - 4), new_row)
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def generate_rd6(template_path, output_path, data, visits,
