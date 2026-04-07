@@ -933,7 +933,7 @@ def _write_docx_preserving_metadata(template_path, file_contents, output_path):
     with open(output_path, 'wb') as f:
         f.write(bytes(raw))
 def _add_extra_visit_rows(tree, visits):
-    """Appends new rows to the visits table for visits beyond the 4 template slots."""
+    """Appends new rows to the visits table for visits beyond the 10 template slots."""
     if len(visits) <= 4:
         return
 
