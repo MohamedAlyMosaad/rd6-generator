@@ -1079,6 +1079,9 @@ def generate_rd6(template_path, output_path, data, visits,
         ('2ndVisit_Ref','2ndVisit_Date','2ndVisit_ins','2ndVisit_part'),
         ('3rdVisit_Ref','3rdVisit_date','3rdVisit_ins','3rdVisit_part'),
         ('4thVisit_Ref','4thVisit_date','4thVisit_ins','4thVisit_part'),
+        ('5thVisit_Ref','5thVisit_date','5thVisit_ins','5thVisit_part'),
+        ('6thVisit_Ref','6thVisit_date','6thVisit_ins','6thVisit_part'),
+        ('7thVisit_Ref','7thVisit_date','7thVisit_ins','7thVisit_part'),
     ]
     for i, (rk, dk, ik, pk) in enumerate(visit_key_map):
         v = visits[i] if i < len(visits) else {}
