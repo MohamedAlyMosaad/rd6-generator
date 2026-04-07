@@ -335,6 +335,7 @@ elif step == 4:
     with c2:
         if st.button("Next →", type="primary"):
             st.session_state.step = 5; st.rerun()
+          st.write("DEBUG visits:", st.session_state.visits)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 5 — Client Requirements
