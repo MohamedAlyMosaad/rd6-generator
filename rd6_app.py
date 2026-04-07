@@ -335,8 +335,6 @@ elif step == 4:
     with c2:
         if st.button("Next →", type="primary"):
             st.session_state.step = 5; st.rerun()
-          st.write("DEBUG visits:", st.session_state.visits)
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 5 — Client Requirements
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -452,6 +450,7 @@ elif step == 6:
                         ce = st.session_state.get(f'cert_ext_{ck}', 'pdf')
                         if cb:
                             extra_cert_bytes.append((cb, ce))
+                    st.write("DEBUG visits:", st.session_state.visits)
                     generate_rd6(
                         template_path      = str(TPL),
                         output_path        = out,
