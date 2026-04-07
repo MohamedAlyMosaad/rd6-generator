@@ -299,7 +299,7 @@ elif step == 3:
 # ═══════════════════════════════════════════════════════════════════════════════
 elif step == 4:
     st.markdown('<div class="step-title">Step 4 — Site Visits</div>', unsafe_allow_html=True)
-    st.info("Template supports up to 4 visit rows. Pre-filled from Excel where available.")
+    st.info("Supports up to 10 visit rows. Pre-filled from Excel where available.")
     eng    = st.session_state.data.get('eng_full','')
     visits = list(st.session_state.visits)
 
