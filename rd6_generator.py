@@ -996,57 +996,23 @@ def _add_extra_visit_rows(tree, visits):
         for ci, tc in enumerate(new_row.findall(f'{{{W}}}tc')):
             val = cell_values[ci] if ci < len(cell_values) else ''
 
-            # ----------------------------------------------------------
-            # Step 1: wipe ALL existing text in this cell first.
-            # This is critical: if the template row was already filled
-            # (SDTs replaced with plain runs), the SDT loop below won't
-            # fire, and the old text would bleed through — causing the
-            # visit-4 duplication bug.
-            # ----------------------------------------------------------
-            for t_elem in tc.iter(f'{{{W}}}t'):
-                t_elem.text = ''
+            # Nuclear wipe: remove everything except <w:tcPr> (borders/shading)
+            # This guarantees no bleed-through from the cloned row regardless
+            # of whether SDTs were already replaced by the main fill loop.
+            for child in list(tc):
+                if child.tag != f'{{{W}}}tcPr':
+                    tc.remove(child)
 
-            # ----------------------------------------------------------
-            # Step 2: try to find an SDT and replace it with a plain run.
-            # If no SDT exists (row was already filled), fall back to
-            # writing into the first paragraph directly.
-            # ----------------------------------------------------------
-            sdts = list(tc.iter(f'{{{W}}}sdt'))
-            if sdts:
-                sdt = sdts[0]
-                sdt_par = sdt.getparent()
-                if sdt_par is not None:
-                    sdt_idx = list(sdt_par).index(sdt)
-                    p = etree.Element(f'{{{W}}}p')
-                    existing_p = sdt.find(f'.//{{{W}}}p')
-                    if existing_p is not None:
-                        existing_pPr = existing_p.find(f'{{{W}}}pPr')
-                        if existing_pPr is not None:
-                            p.append(copy.deepcopy(existing_pPr))
-                    r = etree.SubElement(p, f'{{{W}}}r')
-                    rPr = etree.SubElement(r, f'{{{W}}}rPr')
-                    color = etree.SubElement(rPr, f'{{{W}}}color')
-                    color.set(f'{{{W}}}val', BLUE)
-                    t = etree.SubElement(r, f'{{{W}}}t')
-                    t.text = val
-                    if val and (val[0] == ' ' or val[-1] == ' '):
-                        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-                    sdt_par.remove(sdt)
-                    sdt_par.insert(sdt_idx, p)
-            else:
-                # No SDT — row was already converted to plain runs.
-                # Step 1 cleared them; now inject a fresh run with the value.
-                first_p = tc.find(f'.//{{{W}}}p')
-                if first_p is not None:
-                    r = etree.SubElement(first_p, f'{{{W}}}r')
-                    rPr = etree.SubElement(r, f'{{{W}}}rPr')
-                    color = etree.SubElement(rPr, f'{{{W}}}color')
-                    color.set(f'{{{W}}}val', BLUE)
-                    t = etree.SubElement(r, f'{{{W}}}t')
-                    t.text = val
-                    if val and (val[0] == ' ' or val[-1] == ' '):
-                        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-        actual_parent.insert(last_idx + 1 + (i - 4), new_row)
+            # Rebuild a clean paragraph with a plain blue run
+            p = etree.SubElement(tc, f'{{{W}}}p')
+            r = etree.SubElement(p, f'{{{W}}}r')
+            rPr = etree.SubElement(r, f'{{{W}}}rPr')
+            color_el = etree.SubElement(rPr, f'{{{W}}}color')
+            color_el.set(f'{{{W}}}val', BLUE)
+            t = etree.SubElement(r, f'{{{W}}}t')
+            t.text = val
+            if val and (val[0] == ' ' or val[-1] == ' '):
+                t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def generate_rd6(template_path, output_path, data, visits,
