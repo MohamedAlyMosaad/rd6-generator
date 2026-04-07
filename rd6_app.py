@@ -321,12 +321,12 @@ elif step == 4:
 
     st.session_state.visits = [v for i,v in enumerate(updated) if i not in to_del]
 
-    if len(st.session_state.visits) < 10:
+    if len(st.session_state.visits) < 7:
         if st.button("➕ Add Row"):
             st.session_state.visits.append({'ref':'','date':'','inspector':eng,'part':''})
             st.rerun()
     else:
-        st.caption("Maximum 10 visit rows")
+        st.caption("Maximum 7 visit rows")
 
     c1, c2 = st.columns(2)
     with c1:
