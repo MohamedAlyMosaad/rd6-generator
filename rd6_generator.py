@@ -934,6 +934,50 @@ def _write_docx_preserving_metadata(template_path, file_contents, output_path):
         f.write(bytes(raw))
 
 # ── Main entry point ───────────────────────────────────────────────────────────
+def _clean_visit_table(tree):
+    """Remove any ghost/duplicate rows from the visit table before filling."""
+    W_ns = W
+    expected = [
+        '1stVisit_Ref','2ndVisit_Ref','3rdVisit_Ref','4thVisit_Ref',
+        '5thVisit_Ref','6thVisit_Ref','7thVisit_Ref'
+    ]
+    # Find inner visit table (the one whose rows directly contain visit SDTs)
+    inner_tbl = None
+    for tbl in tree.iter(f'{{{W_ns}}}tbl'):
+        for tr in tbl:
+            if tr.tag != f'{{{W_ns}}}tr': continue
+            for child in tr:
+                if child.tag == f'{{{W_ns}}}sdt':
+                    tag = child.find(f'.//{{{W_ns}}}tag')
+                    if tag is not None and '1stVisit_Ref' in tag.get(f'{{{W_ns}}}val',''):
+                        inner_tbl = tbl
+                        break
+            if inner_tbl is not None: break
+        if inner_tbl is not None: break
+    if inner_tbl is None:
+        return
+
+    # Find first canonical row for each visit tag
+    seen = set()
+    canonical = {}
+    header_row = None
+    for tr in inner_tbl:
+        if tr.tag != f'{{{W_ns}}}tr': continue
+        if header_row is None:
+            header_row = tr
+        for child in tr:
+            if child.tag != f'{{{W_ns}}}sdt': continue
+            tag = child.find(f'.//{{{W_ns}}}tag')
+            if tag is not None and tag.get(f'{{{W_ns}}}val','') in expected:
+                v = tag.get(f'{{{W_ns}}}val','')
+                if v not in seen:
+                    seen.add(v)
+                    canonical[v] = tr
+                break
+
+    keep = {header_row} | set(canonical.values())
+    for tr in [c for c in list(inner_tbl) if c.tag == f'{{{W_ns}}}tr' and c not in keep]:
+        inner_tbl.remove(tr)
 def generate_rd6(template_path, output_path, data, visits,
                  provided_doc_keys,
                  signature_bytes=None, signature_ext='png',
@@ -948,7 +992,7 @@ def generate_rd6(template_path, output_path, data, visits,
     with zipfile.ZipFile(tmp_path, 'r') as z:
         doc_xml = z.read('word/document.xml')
     tree = etree.fromstring(doc_xml)
-
+    _clean_visit_table(tree)   # remove ghost rows before filling
     # Derived values
     eng_full  = data.get('eng_full', '')
     eng_upper = eng_full.upper()
