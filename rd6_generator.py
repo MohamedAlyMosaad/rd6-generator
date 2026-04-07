@@ -933,9 +933,9 @@ def _write_docx_preserving_metadata(template_path, file_contents, output_path):
     with open(output_path, 'wb') as f:
         f.write(bytes(raw))
 def _add_extra_visit_rows(tree, visits):
-    """Appends cloned rows to the visits table for visits beyond the 4 template slots."""
+    """Appends new rows to the visits table for visits beyond the 4 template slots."""
     if len(visits) <= 4:
-        return  # visits 1–4 are handled by template SDTs directly
+        return
 
     visit_field_tags = {
         '1stVisit_Ref','1stVisit_date','1stVisit_isp','1stVisit_part',
@@ -949,23 +949,21 @@ def _add_extra_visit_rows(tree, visits):
         '9thVisit_Ref','9thVisit_date','9thVisit_ins','9thVisit_part',
         '10thVisit_Ref','10thVisit_date','10thVisit_ins','10thVisit_part',
     }
-
     # Find the visit table
     visit_table = None
     for tbl in tree.iter(f'{{{W}}}tbl'):
-        tags = set()
         for sdt in tbl.iter(f'{{{W}}}sdt'):
             tag_elem = sdt.find(f'.//{{{W}}}tag')
-            if tag_elem is not None:
-                tags.add(tag_elem.get(f'{{{W}}}val', ''))
-        if '1stVisit_Ref' in tags:
-            visit_table = tbl
+            if tag_elem is not None and tag_elem.get(f'{{{W}}}val', '') == '1stVisit_Ref':
+                visit_table = tbl
+                break
+        if visit_table is not None:
             break
 
     if visit_table is None:
         return
 
-    # Use iter() to find ALL rows including those inside SDTs
+    # Find the 4th data row
     data_rows = []
     for tr in visit_table.iter(f'{{{W}}}tr'):
         row_tags = set()
@@ -980,39 +978,53 @@ def _add_extra_visit_rows(tree, visits):
         return
 
     template_row = data_rows[-1]
-    # Use the ACTUAL parent (may be SDT content, not the table directly)
     actual_parent = template_row.getparent()
-    parent_children = list(actual_parent)
-    last_idx = parent_children.index(template_row)
+    last_idx = list(actual_parent).index(template_row)
 
+    # ── Extract structural properties only (no content) ──────────────────────
+    # Use iter() to find w:tc regardless of SDT wrapping — this is what
+    # caused findall() to silently return [] and the old wipe to never run.
+    trPr = template_row.find(f'{{{W}}}trPr')
+    template_tcPrs = []
+    for tc in template_row.iter(f'{{{W}}}tc'):
+        tcPr = tc.find(f'{{{W}}}tcPr')
+        template_tcPrs.append(copy.deepcopy(tcPr) if tcPr is not None else None)
+        if len(template_tcPrs) == 4:
+            break
+
+    # ── Build each extra row from scratch — never copies visit content ────────
     for i, visit in enumerate(visits[4:], start=4):
-        new_row = copy.deepcopy(template_row)
         cell_values = [
             visit.get('ref', ''),
             visit.get('date', ''),
             visit.get('inspector', ''),
             visit.get('part', ''),
         ]
-        for ci, tc in enumerate(new_row.findall(f'{{{W}}}tc')):
+
+        new_row = etree.Element(f'{{{W}}}tr')
+        if trPr is not None:
+            new_row.append(copy.deepcopy(trPr))
+
+        for ci in range(4):
             val = cell_values[ci] if ci < len(cell_values) else ''
+            tc = etree.SubElement(new_row, f'{{{W}}}tc')
 
-            # Nuclear wipe: remove everything except <w:tcPr> (borders/shading)
-            # This guarantees no bleed-through from the cloned row regardless
-            # of whether SDTs were already replaced by the main fill loop.
-            for child in list(tc):
-                if child.tag != f'{{{W}}}tcPr':
-                    tc.remove(child)
+            # Restore cell formatting (width, borders, shading)
+            if ci < len(template_tcPrs) and template_tcPrs[ci] is not None:
+                tc.append(copy.deepcopy(template_tcPrs[ci]))
 
-            # Rebuild a clean paragraph with a plain blue run
-            p = etree.SubElement(tc, f'{{{W}}}p')
-            r = etree.SubElement(p, f'{{{W}}}r')
+            # Fresh paragraph — no old content to bleed through
+            p  = etree.SubElement(tc, f'{{{W}}}p')
+            r  = etree.SubElement(p,  f'{{{W}}}r')
             rPr = etree.SubElement(r, f'{{{W}}}rPr')
             color_el = etree.SubElement(rPr, f'{{{W}}}color')
             color_el.set(f'{{{W}}}val', BLUE)
-            t = etree.SubElement(r, f'{{{W}}}t')
+            t  = etree.SubElement(r,  f'{{{W}}}t')
             t.text = val
             if val and (val[0] == ' ' or val[-1] == ' '):
                 t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+
+        actual_parent.insert(last_idx + 1 + (i - 4), new_row)
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def generate_rd6(template_path, output_path, data, visits,
