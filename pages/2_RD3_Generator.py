@@ -351,9 +351,12 @@ elif step == 3:
     # Defects and conclusion
     c1, c2 = st.columns(2)
     with c1:
-        d['defects_text']   = st.text_area("Section III – Defects / Disorders",
-                                            value=d.get('defects_text','None'),
-                                            height=80, key="rd3_defects")
+        d['defects_text']      = st.text_area("III – Defects / Disorders (write 'None' if none)",
+                                               value=d.get('defects_text','None'),
+                                               height=70, key="rd3_defects")
+        d['reservations_text'] = st.text_area("IV – Technical Reservations Not Closed (write 'None' if none)",
+                                               value=d.get('reservations_text','None'),
+                                               height=70, key="rd3_reservations")
     with c2:
         d['conclusion_text'] = st.text_area(
             "IV – Final Conclusion Text",
@@ -495,6 +498,19 @@ elif step == 5:
                                if st.session_state.rd3_visits else '')
             default_conc = ('At the final visit done on {}, no defects in the waterproofing '
                             'were noticed or observed.'.format(last_visit_date))
+
+            st.markdown("---")
+            st.markdown("**Sections III / IV / V — Modifications, Defects, Reservations**")
+            c1, c2, c3 = st.columns(3)
+            mods_yn_r    = c1.radio("III. Any modifications from RD0?", ["NO","YES"], horizontal=True, key="rd3_r_mods_yn")
+            def_yn_r     = c2.radio("IV. Defects / water infiltration observed?", ["NO","YES"], horizontal=True, key="rd3_r_def_yn")
+            res_closed_r = c3.radio("V. Reservations closed?", ["NO","YES"], horizontal=True, key="rd3_r_res_closed")
+            def_ref_r, def_brief_r, res_open_r = '', '', 'NO'
+            if def_yn_r == 'YES':
+                def_ref_r   = st.text_input("Reservation ref (if defect found):", key="rd3_r_def_ref")
+                def_brief_r = st.text_input("Brief description of defect:", key="rd3_r_def_brief")
+            res_open_r = st.radio("V. Any open (unclosed) reservations?", ["NO","YES"], horizontal=True, key="rd3_r_res_open")
+
             conc_yn_r   = st.radio("VI. Execution adapted to project?", ["YES","NO"],
                                     horizontal=True, key="rd3_r_conc_yn")
             conc_text_r = st.text_area("VI. Conclusion details:", value=default_conc,
@@ -513,6 +529,12 @@ elif step == 5:
                 'reviewed_docs_materials': docs_mat,
                 'reviewed_docs_tests':     docs_test,
                 'reviewed_docs_other':     [],
+                'modifications_yn':        mods_yn_r,
+                'defects_observed_yn':     def_yn_r,
+                'defects_ref':             def_ref_r,
+                'defects_brief':           def_brief_r,
+                'reservations_closed_yn':  res_closed_r,
+                'reservations_open_yn':    res_open_r,
                 'conclusion_yn':           conc_yn_r,
                 'conclusion_text':         conc_text_r,
             }
@@ -569,6 +591,19 @@ elif step == 5:
                                if st.session_state.rd3_visits else '')
             default_conc_f = ('At the final visit done on {}, no defects in the waterproofing '
                               'were noticed or observed.'.format(last_visit_date))
+
+            st.markdown("---")
+            st.markdown("**Sections III / IV / V — Modifications, Defects, Reservations**")
+            c1, c2, c3 = st.columns(3)
+            fmods_yn    = c1.radio("III. Any modifications from RD0?", ["NO","YES"], horizontal=True, key="rd3_f_mods_yn")
+            fdef_yn     = c2.radio("IV. Defects observed?",             ["NO","YES"], horizontal=True, key="rd3_f_def_yn")
+            fres_closed = c3.radio("V. Reservations closed?",           ["NO","YES"], horizontal=True, key="rd3_f_res_closed")
+            fdef_ref, fdef_brief, fres_open = '', '', 'NO'
+            if fdef_yn == 'YES':
+                fdef_ref   = st.text_input("Reservation ref:", key="rd3_f_def_ref")
+                fdef_brief = st.text_input("Brief description:", key="rd3_f_def_brief")
+            fres_open = st.radio("V. Any open reservations?", ["NO","YES"], horizontal=True, key="rd3_f_res_open")
+
             fconc_yn   = st.radio("VI. Execution adapted to project?", ["YES","NO"],
                                    horizontal=True, key="rd3_f_conc_yn")
             fconc_text = st.text_area("VI. Conclusion details:", value=default_conc_f,
@@ -585,6 +620,12 @@ elif step == 5:
                 'reviewed_docs_materials': fdocs_mat,
                 'reviewed_docs_tests':     fdocs_test,
                 'reviewed_docs_other':     [],
+                'modifications_yn':        fmods_yn,
+                'defects_observed_yn':     fdef_yn,
+                'defects_ref':             fdef_ref,
+                'defects_brief':           fdef_brief,
+                'reservations_closed_yn':  fres_closed,
+                'reservations_open_yn':    fres_open,
                 'conclusion_yn':           fconc_yn,
                 'conclusion_text':         fconc_text,
             }
@@ -625,6 +666,19 @@ elif step == 5:
                                if st.session_state.rd3_visits else '')
             default_conc_b = ('At the final visit done on {}, no defects in the waterproofing '
                               'were noticed or observed.'.format(last_visit_date))
+
+            st.markdown("---")
+            st.markdown("**Sections III / IV / V — Modifications, Defects, Reservations**")
+            c1, c2, c3 = st.columns(3)
+            bmods_yn    = c1.radio("III. Any modifications from RD0?", ["NO","YES"], horizontal=True, key="rd3_b_mods_yn")
+            bdef_yn     = c2.radio("IV. Defects observed?",             ["NO","YES"], horizontal=True, key="rd3_b_def_yn")
+            bres_closed = c3.radio("V. Reservations closed?",           ["NO","YES"], horizontal=True, key="rd3_b_res_closed")
+            bdef_ref, bdef_brief, bres_open = '', '', 'NO'
+            if bdef_yn == 'YES':
+                bdef_ref   = st.text_input("Reservation ref:", key="rd3_b_def_ref")
+                bdef_brief = st.text_input("Brief description:", key="rd3_b_def_brief")
+            bres_open = st.radio("V. Any open reservations?", ["NO","YES"], horizontal=True, key="rd3_b_res_open")
+
             bconc_yn   = st.radio("VI. Execution adapted to project?", ["YES","NO"],
                                    horizontal=True, key="rd3_b_conc_yn")
             bconc_text = st.text_area("VI. Conclusion details:", value=default_conc_b,
@@ -639,6 +693,12 @@ elif step == 5:
                 'reviewed_docs_materials': bdocs_mat,
                 'reviewed_docs_tests':     bdocs_test,
                 'reviewed_docs_other':     [],
+                'modifications_yn':        bmods_yn,
+                'defects_observed_yn':     bdef_yn,
+                'defects_ref':             bdef_ref,
+                'defects_brief':           bdef_brief,
+                'reservations_closed_yn':  bres_closed,
+                'reservations_open_yn':    bres_open,
                 'conclusion_yn':           bconc_yn,
                 'conclusion_text':         bconc_text,
             }
