@@ -107,37 +107,30 @@ if step == 1:
                                     help="Select name — phone/email auto-fill",
                                     key="rd3_eng_name")
 
-            # ── Auto-fill fix: clear widget keys when selection changes ──────
-            prev_eng = st.session_state.get('_rd3_prev_eng', None)
-            if selected != prev_eng:
+            # ── Auto-fill: directly write into widget session state + rerun ──
+            if selected != st.session_state.get('_rd3_prev_eng', '__UNSET__'):
                 st.session_state['_rd3_prev_eng'] = selected
-                # Delete stale keys so text_inputs reset to new defaults
-                for _k in ['rd3_phone', 'rd3_email']:
-                    if _k in st.session_state:
-                        del st.session_state[_k]
+                if selected and selected in TEAM:
+                    st.session_state['rd3_phone'] = TEAM[selected]['phone']
+                    st.session_state['rd3_email'] = TEAM[selected]['email']
+                else:
+                    st.session_state['rd3_phone'] = ''
+                    st.session_state['rd3_email'] = ''
+                st.rerun()
 
-            if selected and selected in TEAM:
-                info = TEAM[selected]
-                default_phone = info['phone']
-                default_email = info['email']
-            else:
-                default_phone = ''
-                default_email = ''
             name = selected
         else:
             name = st.text_input("Full Name (First Last) *", placeholder="Mohamed Mossad",
                                  key="rd3_eng_name_text")
-            default_phone = ''
-            default_email = ''
 
         if name:
             parts = name.strip().split()
             pfx = (parts[0][0] + parts[1][:2]).upper() if len(parts) >= 2 else name[:3].upper()
             st.caption("Reference prefix: **{}**".format(pfx))
 
-        phone = st.text_input("📞 Phone Number *", value=default_phone,
+        phone = st.text_input("📞 Phone Number *",
                               placeholder="+966 xxxxxxxxx", key="rd3_phone")
-        email = st.text_input("✉️ Email *", value=default_email,
+        email = st.text_input("✉️ Email *",
                               placeholder="xxxx@socotec.com", key="rd3_email")
         phase  = st.selectbox("Phase / Speciality",
                               ["Waterproofing", "Senior", "Mid-Level", "Junior"],
