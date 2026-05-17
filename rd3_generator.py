@@ -531,18 +531,24 @@ def _add_attachments(doc, attachments):
     if not attachments:
         return
     from io import BytesIO
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
 
-    # Add page break before attachments section
+    # Section header
     para = doc.add_paragraph()
-    para.add_run('ATTACHMENTS').bold = True
-    run = para.runs[0]
+    run = para.add_run('ATTACHMENTS')
+    run.bold = True
     run.font.size = Pt(12)
     run.font.color.rgb = BLUE
 
     for fname, fbytes in attachments:
-        # Page break
+        # Page break using XML (avoids docx_break_type bug)
         bp = doc.add_paragraph()
-        bp.add_run().add_break(docx_break_type='page')
+        r = OxmlElement('w:r')
+        br = OxmlElement('w:br')
+        br.set(qn('w:type'), 'page')
+        r.append(br)
+        bp._p.append(r)
 
         # Caption
         cap = doc.add_paragraph()
@@ -605,14 +611,18 @@ def generate_rd3(template_path, output_path, data, visits, annex_data,
 
     # 4. Table 2: main report
     _fill_table2(doc.tables[2], data, visits)
+    _fill_t2_defects_reservations(doc.tables[2], data)
 
     # 5. Annex tables
     if 'roofs' in annex_data and len(doc.tables) > 3:
         _fill_annex_table(doc.tables[3], annex_data['roofs'], 'roof')
+        _fill_annex_extras(doc.tables[3], annex_data['roofs'], 'roof')
     if 'facades' in annex_data and len(doc.tables) > 4:
         _fill_annex_table(doc.tables[4], annex_data['facades'], 'facade')
+        _fill_annex_extras(doc.tables[4], annex_data['facades'], 'facade')
     if 'basements' in annex_data and len(doc.tables) > 5:
         _fill_annex_table(doc.tables[5], annex_data['basements'], 'basement')
+        _fill_annex_extras(doc.tables[5], annex_data['basements'], 'basement')
 
     # 6. Engineer signature image (inserted into each signature block)
     if sig_bytes:
@@ -624,3 +634,126 @@ def generate_rd3(template_path, output_path, data, visits, annex_data,
 
     doc.save(output_path)
     return output_path
+
+
+# ═══ ADDITIONAL HELPERS FOR MISSING SECTIONS ═══════════════════════════════
+
+
+def _toggle_plain_cb(container_elem, phrase, answer, replace_first=True):
+    """
+    Find paragraph containing phrase inside container_elem (searches nested tables too).
+    Toggle '☐ YES' or '☐ NO' to '☒ YES' / '☒ NO' accordingly.
+    """
+    for p in container_elem.iter(f'{{{W}}}p'):
+        txt = _get_text(p)
+        if phrase in txt and '☐' in txt:
+            if answer == 'YES':
+                new = txt.replace('☐ YES', '☒ YES', 1 if replace_first else -1)
+            else:
+                new = txt.replace('☐ NO', '☒ NO', 1 if replace_first else -1)
+            # Also handle no-space variant
+            new = new.replace('☐YES', '☒YES') if answer == 'YES' else new.replace('☐NO', '☒NO')
+            _set_para_text(p, new)
+            return True
+    return False
+
+
+def _add_ref_after_phrase(container_elem, phrase, ref_text):
+    """Find paragraph with phrase and append ref_text after it."""
+    for p in container_elem.iter(f'{{{W}}}p'):
+        txt = _get_text(p)
+        if phrase in txt:
+            combined = txt.rstrip() + ' ' + ref_text
+            _set_para_text(p, combined)
+            return True
+    return False
+
+
+def _fill_annex_extras(tbl, ann, annex_type):
+    """
+    Fill the sections not covered by _fill_annex_table:
+    - III Modifications (rows 6/6/5 for roof/facade/basement)
+    - IV Defects/Tests (rows 8/8/7)
+    - V Reservations (rows 10/10/9)
+    - Conclusion nested YES/NO (last row nested table)
+    """
+    # Row index mapping per annex type
+    if annex_type == 'basement':
+        mod_row, def_row, res_row = 5, 7, 9
+    else:  # roof and facade
+        mod_row, def_row, res_row = 6, 8, 10
+
+    # ── III Modifications ──────────────────────────────────────────────────
+    if mod_row < len(tbl.rows):
+        mod_cell = tbl.rows[mod_row].cells[0]._tc
+        mods_yn = ann.get('modifications_yn', 'NO')
+        _toggle_plain_cb(mod_cell, 'modification of the waterproofing', mods_yn)
+        if mods_yn == 'YES':
+            # validation?
+            _toggle_plain_cb(mod_cell, 'validation of the modification', ann.get('mod_validation_yn', 'YES'))
+            # TIS acceptable?
+            _toggle_plain_cb(mod_cell, 'TIS find acceptable', ann.get('mod_acceptable_yn', 'YES'))
+            # execution satisfactory?
+            _toggle_plain_cb(mod_cell, 'execution satisfactory', ann.get('mod_execution_yn', 'YES'))
+        else:
+            # All sub-questions N/A → leave as ☐ (no change needed)
+            pass
+
+    # ── IV Defects / Roof tests ────────────────────────────────────────────
+    if def_row < len(tbl.rows):
+        def_cell = tbl.rows[def_row].cells[0]._tc
+        def_yn = ann.get('defects_observed_yn', 'NO')
+        _toggle_plain_cb(def_cell, 'observe any defect', def_yn)
+        _toggle_plain_cb(def_cell, 'infiltration', def_yn)
+        if def_yn == 'YES':
+            ref = ann.get('defects_ref', '')
+            if ref:
+                _add_ref_after_phrase(def_cell, 'please issue a technical reservation. Ref.:', ref)
+            brief = ann.get('defects_brief', '')
+            if brief:
+                _add_ref_after_phrase(def_cell, 'Describe it briefly:', brief)
+
+    # ── V Reservations ────────────────────────────────────────────────────
+    if res_row < len(tbl.rows):
+        res_cell = tbl.rows[res_row].cells[0]._tc
+        _toggle_plain_cb(res_cell, 'issued and closed', ann.get('reservations_closed_yn', 'NO'))
+        _toggle_plain_cb(res_cell, 'issued not closed',  ann.get('reservations_open_yn',   'NO'))
+
+    # ── Conclusion nested YES/NO (last row of each annex table) ───────────
+    last_row_cell = tbl.rows[-1].cells[0]._tc
+    conc_yn = ann.get('conclusion_yn', 'YES')
+    _toggle_plain_cb(last_row_cell,
+                     'IS THE EXECUTION OF WORKS ADAPTED TO THE PROJECT',
+                     conc_yn)
+
+
+def _fill_t2_defects_reservations(table, data):
+    """Fill T2 row 7 (defects list) and row 9 (reservations) in main report."""
+    defects = data.get('defects_text', 'None')
+    reservations = data.get('reservations_text', 'None')
+
+    # Row 7: defects — write into first empty paragraph after the instruction
+    if len(table.rows) > 7:
+        cell7 = table.rows[7].cells[0]
+        paras = cell7.paragraphs
+        for pi, para in enumerate(paras):
+            if 'Please list below' in para.text:
+                # Write defects text into next empty para
+                for ep in paras[pi+1:]:
+                    if not ep.text.strip():
+                        run = ep.add_run(defects)
+                        run.font.size = Pt(9)
+                        run.font.color.rgb = BLUE
+                        break
+                break
+
+    # Row 9: reservations area
+    if len(table.rows) > 9:
+        cell9 = table.rows[9].cells[0]
+        paras9 = cell9.paragraphs
+        for ep in paras9:
+            if not ep.text.strip():
+                run = ep.add_run(reservations)
+                run.font.size = Pt(9)
+                run.font.color.rgb = BLUE
+                break
