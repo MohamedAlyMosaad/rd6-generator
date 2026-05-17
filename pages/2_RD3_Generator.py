@@ -106,13 +106,23 @@ if step == 1:
             selected = st.selectbox("Full Name *", options=options, index=0,
                                     help="Select name — phone/email auto-fill",
                                     key="rd3_eng_name")
+
+            # ── Auto-fill fix: clear widget keys when selection changes ──────
+            prev_eng = st.session_state.get('_rd3_prev_eng', None)
+            if selected != prev_eng:
+                st.session_state['_rd3_prev_eng'] = selected
+                # Delete stale keys so text_inputs reset to new defaults
+                for _k in ['rd3_phone', 'rd3_email']:
+                    if _k in st.session_state:
+                        del st.session_state[_k]
+
             if selected and selected in TEAM:
                 info = TEAM[selected]
-                default_phone  = info['phone']
-                default_email  = info['email']
+                default_phone = info['phone']
+                default_email = info['email']
             else:
-                default_phone  = ''
-                default_email  = ''
+                default_phone = ''
+                default_email = ''
             name = selected
         else:
             name = st.text_input("Full Name (First Last) *", placeholder="Mohamed Mossad",
@@ -140,6 +150,7 @@ if step == 1:
         reviewer_options = [''] + TEAM_NAMES
         reviewer = st.selectbox("Reviewer (Engineer in Charge) *",
                                 options=reviewer_options, index=0, key="rd3_reviewer")
+
         reviewer_custom = st.text_input("Or type reviewer name manually",
                                         placeholder="Leave blank if selected above",
                                         key="rd3_reviewer_custom")
