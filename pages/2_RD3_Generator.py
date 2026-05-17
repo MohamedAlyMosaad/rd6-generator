@@ -9,7 +9,9 @@ import streamlit as st
 
 # ── Paths (pages/ is one level below repo root) ───────────────────────────────
 BASE       = Path(__file__).parent.parent
-TPL        = BASE / "Template_RD3.docx"
+_tpl_underscore = BASE / "Template_RD3.docx"
+_tpl_space      = BASE / "Template RD3.docx"
+TPL = _tpl_underscore if _tpl_underscore.exists() else _tpl_space
 EXCEL      = BASE / "malath_log.xlsx"
 TEAM_EXCEL = BASE / "IDI_Team.xlsx"
 
@@ -156,6 +158,16 @@ if step == 1:
         issue_dt  = st.date_input("Report Issue Date", value=date.today(), key="rd3_issue_dt")
         issue_str = "{}/{}/{}".format(issue_dt.day, issue_dt.month, issue_dt.year)
         city      = st.text_input("Report City", value="Riyadh", key="rd3_city")
+
+        st.markdown("---")
+        st.markdown("**Engineer Signature Image** *(optional)*")
+        sig_file = st.file_uploader("Upload PNG/JPG signature (transparent preferred)",
+                                     type=["png", "jpg", "jpeg"], key="rd3_sig_upload")
+        if sig_file:
+            st.image(sig_file, width=150, caption="Signature preview")
+            st.session_state['_rd3_sig_bytes'] = sig_file.read()
+        elif '_rd3_sig_bytes' not in st.session_state:
+            st.session_state['_rd3_sig_bytes'] = None
 
     ready = bool(name and name.strip() and phone.strip() and email.strip() and final_reviewer)
     if not ready:
@@ -667,6 +679,14 @@ elif step == 6:
 
     st.markdown("---")
 
+    # Attachments
+    st.markdown("**📎 Attachments** *(optional — added as pages at end of report)*")
+    att_files = st.file_uploader("Upload images to attach (PNG, JPG, PDF)",
+                                  type=["png","jpg","jpeg","pdf"],
+                                  accept_multiple_files=True, key="rd3_attachments")
+    if att_files:
+        st.caption("{} attachment(s) will be added to the report.".format(len(att_files)))
+
     if not TPL.exists():
         st.error("Template not found: `{}`  —  Upload Template_RD3.docx to the repo root.".format(TPL))
         st.info("📁 Expected path: repo root → `Template_RD3.docx`")
@@ -676,12 +696,20 @@ elif step == 6:
                 try:
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
                         out = tmp.name
+                    # Prepare signature bytes
+                    sig_b = st.session_state.get('_rd3_sig_bytes', None)
+                    # Prepare attachments
+                    attach_list = None
+                    if att_files:
+                        attach_list = [(f.name, f.read()) for f in att_files]
                     generate_rd3(
                         template_path = str(TPL),
                         output_path   = out,
                         data          = d,
                         visits        = visits,
                         annex_data    = ann,
+                        sig_bytes     = sig_b,
+                        attachments   = attach_list,
                     )
                     with open(out,'rb') as f:
                         docx_bytes = f.read()
