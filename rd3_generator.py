@@ -413,7 +413,8 @@ def _fill_annex_table(table, ann, annex_type):
                 r1.font.size = Pt(9)
                 r2 = para.add_run(ann['description_i2'])
                 r2.font.size = Pt(9); r2.font.color.rgb = BLUE
-            elif txt.startswith('I.3.') and ann.get('description_i3') and annex_type == 'roof':
+            elif txt.startswith('I.3.') and ann.get('description_i3'):
+                # I.3 exists for all annex types (roofs, facades, basements)
                 para.clear()
                 r1 = para.add_run(txt + '\n\n')
                 r1.font.size = Pt(9)
@@ -527,42 +528,37 @@ def _toggle_all_sdts(body, annex_data):
 # ── Attachments ───────────────────────────────────────────────────────────────
 
 def _add_attachments(doc, attachments):
-    """Add attachment images at the end of the document, one per page."""
+    """Add attachments at end of document. Images displayed inline; PDFs referenced by name."""
     if not attachments:
         return
     from io import BytesIO
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    # Section header
     para = doc.add_paragraph()
     run = para.add_run('ATTACHMENTS')
-    run.bold = True
-    run.font.size = Pt(12)
-    run.font.color.rgb = BLUE
+    run.bold = True; run.font.size = Pt(12); run.font.color.rgb = BLUE
 
     for fname, fbytes in attachments:
-        # Page break using XML (avoids docx_break_type bug)
+        # Page break
         bp = doc.add_paragraph()
-        r = OxmlElement('w:r')
-        br = OxmlElement('w:br')
-        br.set(qn('w:type'), 'page')
-        r.append(br)
-        bp._p.append(r)
+        r = OxmlElement('w:r'); br = OxmlElement('w:br')
+        br.set(qn('w:type'), 'page'); r.append(br); bp._p.append(r)
 
         # Caption
         cap = doc.add_paragraph()
-        cap_run = cap.add_run(fname)
-        cap_run.bold = True
-        cap_run.font.size = Pt(9)
+        cap.add_run(fname).bold = True
 
-        # Image
-        try:
-            img_para = doc.add_paragraph()
-            img_run = img_para.add_run()
-            img_run.add_picture(BytesIO(fbytes), width=Cm(15))
-        except Exception:
-            doc.add_paragraph('[Image: {}]'.format(fname))
+        # Try image; if PDF or fails just add reference note
+        ext = fname.lower().split('.')[-1] if '.' in fname else ''
+        if ext == 'pdf':
+            doc.add_paragraph('[ PDF document: {} — please attach separately ]'.format(fname))
+        else:
+            try:
+                img_para = doc.add_paragraph()
+                img_para.add_run().add_picture(BytesIO(fbytes), width=Cm(15))
+            except Exception:
+                doc.add_paragraph('[ Image: {} — could not render ]'.format(fname))
 
 
 # ── Break type fix ────────────────────────────────────────────────────────────
@@ -578,6 +574,22 @@ def _add_page_break(doc):
     r.append(br)
     para._p.append(r)
     return para
+
+
+def _mark_annex_na(table):
+    """Mark a non-selected annex table as NOT APPLICABLE — fills all empty text areas with N/A."""
+    na_run_added = set()
+    for ri, row in enumerate(table.rows):
+        cell = row.cells[0]
+        txt = cell.text.strip()
+        # Fill description cells (I.1, I.2, I.3) and conclusion text with N/A
+        if any(txt.startswith(lbl) for lbl in ('I.1.', 'I.2.', 'I.3.')):
+            for para in cell.paragraphs:
+                if not para.text.strip():
+                    run = para.add_run('N/A')
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+                    break
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -617,12 +629,20 @@ def generate_rd3(template_path, output_path, data, visits, annex_data,
     if 'roofs' in annex_data and len(doc.tables) > 3:
         _fill_annex_table(doc.tables[3], annex_data['roofs'], 'roof')
         _fill_annex_extras(doc.tables[3], annex_data['roofs'], 'roof')
+    elif len(doc.tables) > 3:
+        _mark_annex_na(doc.tables[3])
+
     if 'facades' in annex_data and len(doc.tables) > 4:
         _fill_annex_table(doc.tables[4], annex_data['facades'], 'facade')
         _fill_annex_extras(doc.tables[4], annex_data['facades'], 'facade')
+    elif len(doc.tables) > 4:
+        _mark_annex_na(doc.tables[4])
+
     if 'basements' in annex_data and len(doc.tables) > 5:
         _fill_annex_table(doc.tables[5], annex_data['basements'], 'basement')
         _fill_annex_extras(doc.tables[5], annex_data['basements'], 'basement')
+    elif len(doc.tables) > 5:
+        _mark_annex_na(doc.tables[5])
 
     # 6. Engineer signature image (inserted into each signature block)
     if sig_bytes:
