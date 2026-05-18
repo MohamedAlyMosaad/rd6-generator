@@ -467,9 +467,79 @@ elif step == 5:
     st.markdown("---")
     annex_data = {}
 
+    # Description template library
+    ROOF_TEMPLATES = {
+        "Bituminous membrane — residential roof + wet areas": {
+            "i1": "The waterproofing had been executed to the roof top and the uncovered terraces",
+            "i2": "The waterproofing system consists of a bituminous primer and two layers of 4mm bituminous membranes (SABIT), protected by a sand bed with ceramic tiles.",
+            "i3": "The waterproofing covered 7 cm height as plinths above the final level at the junctions with walls and parapets.",
+            "other": "Wet areas (Kitchen and toilets)", "types": ["ROOF", "OTHER"],
+        },
+        "Bituminous membrane — single layer": {
+            "i1": "The waterproofing had been executed to the roof top and the uncovered terraces",
+            "i2": "The waterproofing system consists of a bituminous primer and one layer of 4mm bituminous membranes (SABIT), protected by a sand bed with ceramic tiles.",
+            "i3": "The waterproofing covered 7 cm height as plinths above the final level at the junctions with walls and parapets.",
+            "other": "Wet areas (Kitchen and toilets)", "types": ["ROOF", "OTHER"],
+        },
+        "Cement-based waterproofing (Fosam)": {
+            "i1": "The waterproofing had been executed to the roof top and the uncovered terraces",
+            "i2": "The waterproofing materials consists of two cement based waterproofing (Fosam) layers protected by one bed of sand with ceramic tiles.",
+            "i3": "The waterproofing covered 7 cm height as plinths above the final level at the junctions with walls and parapets.",
+            "other": "Wet areas (Kitchen and toilets)", "types": ["ROOF", "OTHER"],
+        },
+        "Metal panel roof (industrial/commercial)": {
+            "i1": "The roof consists of sloped metal panels with rockwool layer laid on metal ribs fixed to a metal structure supported by metal columns.",
+            "i2": "The waterproofing system consists of sloped metal panels with rockwool layer fixed by screws with silicone around the screws.",
+            "i3": "The junctions are treated with metal flashing and silicone sealant around all penetrations and edges.",
+            "other": "", "types": ["ROOF"],
+        },
+        "Custom (fill manually)": {"i1":"","i2":"","i3":"","other":"","types":[]},
+    }
+    FACADE_TEMPLATES = {
+        "Block walls + aluminum windows (standard residential)": {
+            "i1": "The facades consist of plastered painted block walls facades and aluminum glazed windows and openings.",
+            "i2": "Aluminium glazed windows are treated with silicone at the junctions with the walls.",
+            "i3": "Aluminium glazed windows are treated with silicone at the junctions with the walls.",
+            "other": "Stone cladding on the main façade only, with aluminum glazed windows and openings",
+        },
+        "Block walls + metal sheets (industrial)": {
+            "i1": "The facades consist of block walls with paint and metal sheets on the upper part fixed on metal ribs and columns with Metal opening (Doors).",
+            "i2": "The Facades metal sheets cover the painted block walls on the upper level of the facades.",
+            "i3": "Metal flashing is used at the junction between metal panels and block walls.",
+            "other": "Upper part with Metal sheets fixed on metal ribs and columns with Metal opening (Doors)",
+        },
+        "Plastered block walls only": {
+            "i1": "The facades consist of plastered and painted block walls.",
+            "i2": "The waterproofing system consists of waterproofing paint applied to the exterior facades.",
+            "i3": "The junctions with the roof and ground level are sealed with flexible sealant.",
+            "other": "",
+        },
+        "Custom (fill manually)": {"i1":"","i2":"","i3":"","other":""},
+    }
+
     # ── ANNEX 1 — ROOFS ────────────────────────────────────────────────────────
     if has_roofs:
         with st.expander("📋 Annex 1 — Roofs", expanded=True):
+            # ── Template selector ─────────────────────────────────────────────
+            st.markdown("**🏗️ Quick-fill: Select standard description**")
+            tpl_r = st.selectbox("Roof description template:", options=list(ROOF_TEMPLATES.keys()),
+                                  key="rd3_r_tpl")
+            tpl_r_data = ROOF_TEMPLATES[tpl_r]
+
+            if st.button("✅ Apply template", key="rd3_r_apply_tpl"):
+                for key, val in [('rd3_r_desc_i1', tpl_r_data['i1']),
+                                  ('rd3_r_desc_i2', tpl_r_data['i2']),
+                                  ('rd3_r_desc_i3', tpl_r_data['i3']),
+                                  ('rd3_rt_other_text', tpl_r_data['other'])]:
+                    st.session_state[key] = val
+                if tpl_r_data.get('types'):
+                    for k in ['rd3_rt_roof','rd3_rt_rtt','rd3_rt_it','rd3_rt_pat','rd3_rt_other']:
+                        st.session_state[k] = False
+                    if 'ROOF'  in tpl_r_data['types']: st.session_state['rd3_rt_roof'] = True
+                    if 'OTHER' in tpl_r_data['types']: st.session_state['rd3_rt_other'] = True
+                st.rerun()
+
+            st.markdown("---")
             st.markdown("**Type of Roof(s)** — select all that apply:")
             col1, col2, col3 = st.columns(3)
             col4, col5       = st.columns([1, 2])
@@ -486,15 +556,20 @@ elif step == 5:
             if rt_other: roof_types.append('OTHER')
             other_type_text = ''
             if rt_other:
-                other_type_text = st.text_input("Other roof type description:", key="rd3_rt_other_text")
+                other_type_text = st.text_input("Other roof type description:",
+                                                 value=st.session_state.get('rd3_rt_other_text',''),
+                                                 key="rd3_rt_other_text")
 
             st.markdown("**Works Description**")
             c1, c2 = st.columns(2)
             desc_i1 = c1.text_area("I.1. Describe the roof (type, materials, layers, slope, location):",
+                                    value=st.session_state.get('rd3_r_desc_i1',''),
                                     height=100, key="rd3_r_desc_i1")
             desc_i2 = c2.text_area("I.2. Describe the waterproofing system layers (material, manufacturer, thickness):",
+                                    value=st.session_state.get('rd3_r_desc_i2',''),
                                     height=100, key="rd3_r_desc_i2")
             desc_i3 = c1.text_area("I.3. Describe junctions (façade, vertical surfaces, etc.):",
+                                    value=st.session_state.get('rd3_r_desc_i3',''),
                                     height=80, key="rd3_r_desc_i3")
             innovative_yn = c2.radio("I.4. Does WP include innovative technique/materials?",
                                       ["NO", "YES"], horizontal=True, key="rd3_r_inn_yn")
@@ -570,6 +645,20 @@ elif step == 5:
     # ── ANNEX 2 — FAÇADES ─────────────────────────────────────────────────────
     if has_facades:
         with st.expander("📋 Annex 2 — Façades", expanded=True):
+            # Template selector
+            st.markdown("**🏗️ Quick-fill: Select standard description**")
+            tpl_f = st.selectbox("Façade description template:", options=list(FACADE_TEMPLATES.keys()),
+                                  key="rd3_f_tpl")
+            tpl_f_data = FACADE_TEMPLATES[tpl_f]
+            if st.button("✅ Apply template", key="rd3_f_apply_tpl"):
+                for key, val in [('rd3_f_desc_i1', tpl_f_data['i1']),
+                                  ('rd3_f_desc_i2', tpl_f_data['i2']),
+                                  ('rd3_f_desc_i3', tpl_f_data['i3']),
+                                  ('rd3_ft_other_text', tpl_f_data.get('other',''))]:
+                    st.session_state[key] = val
+                st.rerun()
+
+            st.markdown("---")
             st.markdown("**Type of Façade(s)** — select all that apply:")
             col1, col2, col3 = st.columns(3)
             col4, _          = st.columns([1, 2])
@@ -589,11 +678,11 @@ elif step == 5:
             st.markdown("**Works Description**")
             c1, c2 = st.columns(2)
             fdesc_i1 = c1.text_area("I.1. Describe the façade (type, materials, layers, location):",
-                                     value='N/A', height=90, key="rd3_f_desc_i1")
+                                     value=st.session_state.get('rd3_f_desc_i1','N/A'), height=90, key="rd3_f_desc_i1")
             fdesc_i2 = c2.text_area("I.2. Identify waterproofing junctions (location, material, manufacturer):",
-                                     value='N/A', height=90, key="rd3_f_desc_i2")
+                                     value=st.session_state.get('rd3_f_desc_i2','N/A'), height=90, key="rd3_f_desc_i2")
             fdesc_i3 = c1.text_area("I.3. Describe junctions with other elements (roofs, floors, balconies):",
-                                     value='N/A', height=90, key="rd3_f_desc_i3")
+                                     value=st.session_state.get('rd3_f_desc_i3','N/A'), height=90, key="rd3_f_desc_i3")
 
             st.markdown("**Materials**")
             c1, c2, c3 = st.columns(3)
@@ -794,6 +883,11 @@ elif step == 6:
         if st.button("🚀 Generate RD3 Report", type="primary", key="rd3_gen_btn"):
             with st.spinner("Building RD3 report…"):
                 try:
+                    # Fix conclusion date if it contains placeholder ___
+                    last_v_date = visits[-1].get('date','') if visits else ''
+                    if last_v_date:
+                        if '___' in d.get('conclusion_text',''):
+                            d['conclusion_text'] = d['conclusion_text'].replace('___', last_v_date)
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
                         out = tmp.name
                     # Prepare signature bytes
