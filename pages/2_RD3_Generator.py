@@ -121,13 +121,15 @@ if step == 1:
                 st.rerun()
 
             name = selected
-            # ── Persist name immediately so it's never lost ─────────────────
-            if name:
+            # ── Save to dedicated backup key — survives all reruns ───────────
+            if name and name.strip():
+                st.session_state['_rd3_eng_backup'] = name.strip()
                 st.session_state.rd3_data['eng_full'] = name.strip()
         else:
             name = st.text_input("Full Name (First Last) *", placeholder="Mohamed Mossad",
                                  key="rd3_eng_name_text")
-            if name:
+            if name and name.strip():
+                st.session_state['_rd3_eng_backup'] = name.strip()
                 st.session_state.rd3_data['eng_full'] = name.strip()
 
         if name:
@@ -293,6 +295,12 @@ elif step == 2:
 elif step == 3:
     st.markdown('<div class="step-title">Step 3 — Project Information</div>', unsafe_allow_html=True)
     d = st.session_state.rd3_data
+
+    # Recover engineer name if lost
+    if not d.get('eng_full','').strip():
+        backup = st.session_state.get('_rd3_eng_backup', '')
+        if backup:
+            d['eng_full'] = backup
 
     tab1, tab2, tab3 = st.tabs(["📋 Core Info", "📅 Dates & Reference", "🔖 Document Ref"])
 
@@ -748,10 +756,17 @@ elif step == 6:
     visits = st.session_state.rd3_visits
     ann    = st.session_state.rd3_annex_data
 
+    # ── Recover engineer name from backup if somehow lost ─────────────────
+    if not d.get('eng_full','').strip():
+        backup = st.session_state.get('_rd3_eng_backup', '')
+        if backup:
+            d['eng_full'] = backup
+            st.session_state.rd3_data['eng_full'] = backup
+
     # Summary metrics
     c1,c2,c3 = st.columns(3)
     c1.metric("RD3 Reference",    d.get('rd3_ref','—'))
-    c2.metric("Engineer",         d.get('eng_full','—'))
+    c2.metric("Engineer",         d.get('eng_full','⚠️ MISSING'))
     c3.metric("Issue Date",       d.get('issue_date','—'))
     c1.metric("IDI No.",          d.get('idi_no','—') or '—')
     c2.metric("Tawuniya Policy",  d.get('taw_pol','—') or 'N/A')
