@@ -576,6 +576,48 @@ def _add_page_break(doc):
     return para
 
 
+def _fill_annex_other_text(table, other_text):
+    """
+    Fill the OTHER: text in annex type row (row 0).
+    Paragraph structure: [tab][tab][SDT ☐][run 'OTHER: '][run '\t']
+    Must modify only the 'OTHER: ' run — NOT use _set_para_text (which destroys the SDT).
+    """
+    if not other_text:
+        return
+    type_cell = table.rows[0].cells[0]._tc
+    for p in type_cell.findall(f'.//{{{W}}}p'):
+        # Only look at direct child w:r runs (skips SDT content)
+        for r in p.findall(f'{{{W}}}r'):
+            for t_elem in r.findall(f'{{{W}}}t'):
+                if t_elem.text and 'OTHER:' in t_elem.text:
+                    # Replace only the text of this run
+                    t_elem.text = 'OTHER: ' + other_text
+                    t_elem.set(XML_SPACE, 'preserve')
+                    return
+
+
+def _enrich_reviewed_docs(ann, visit_refs):
+    """
+    Auto-fill reviewed docs if engineer left them blank.
+    Smart defaults: warranty certificate + visit report references.
+    """
+    # Material docs: warranty certificate if empty
+    if not ann.get('reviewed_docs_materials'):
+        ann['reviewed_docs_materials'] = ['Waterproofing warranty certificate']
+
+    # Test docs: warranty + visit report refs if empty
+    if not ann.get('reviewed_docs_tests'):
+        test_docs = ['Waterproofing warranty certificate']
+        # Add intermediate visit references (all except the very last = final visit)
+        for ref in visit_refs[:-1]:   # skip last visit (final)
+            if ref:
+                test_docs.append('Visit Report ({})'.format(ref))
+        # If only 1 visit total, still add it as test doc
+        if len(visit_refs) == 1 and visit_refs[0]:
+            test_docs.append('Visit Report ({})'.format(visit_refs[0]))
+        ann['reviewed_docs_tests'] = test_docs[:4]  # max 4 slots
+
+
 def _mark_annex_na(table):
     """Mark a non-selected annex table as NOT APPLICABLE — fills all empty text areas with N/A."""
     na_run_added = set()
@@ -626,19 +668,27 @@ def generate_rd3(template_path, output_path, data, visits, annex_data,
     _fill_t2_defects_reservations(doc.tables[2], data)
 
     # 5. Annex tables
+    # Enrich annex data with visit refs for reviewed docs auto-fill
+    visit_refs = [v.get('ref','') for v in visits if v.get('ref','')]
+
     if 'roofs' in annex_data and len(doc.tables) > 3:
+        _fill_annex_other_text(doc.tables[3], annex_data['roofs'].get('other_type_text',''))
+        _enrich_reviewed_docs(annex_data['roofs'], visit_refs)
         _fill_annex_table(doc.tables[3], annex_data['roofs'], 'roof')
         _fill_annex_extras(doc.tables[3], annex_data['roofs'], 'roof')
     elif len(doc.tables) > 3:
         _mark_annex_na(doc.tables[3])
 
     if 'facades' in annex_data and len(doc.tables) > 4:
+        _fill_annex_other_text(doc.tables[4], annex_data['facades'].get('other_type_text',''))
+        _enrich_reviewed_docs(annex_data['facades'], visit_refs)
         _fill_annex_table(doc.tables[4], annex_data['facades'], 'facade')
         _fill_annex_extras(doc.tables[4], annex_data['facades'], 'facade')
     elif len(doc.tables) > 4:
         _mark_annex_na(doc.tables[4])
 
     if 'basements' in annex_data and len(doc.tables) > 5:
+        _enrich_reviewed_docs(annex_data['basements'], visit_refs)
         _fill_annex_table(doc.tables[5], annex_data['basements'], 'basement')
         _fill_annex_extras(doc.tables[5], annex_data['basements'], 'basement')
     elif len(doc.tables) > 5:
