@@ -437,7 +437,24 @@ elif step == 4:
 
     if len(st.session_state.rd3_visits) < 10:
         if st.button("➕ Add Row", key="rd3_add_visit"):
-            st.session_state.rd3_visits.append({'ref':'','date':'','inspector':eng,'part':'Waterproofing'})
+            n = len(st.session_state.rd3_visits) + 1
+            d4 = st.session_state.rd3_data
+            # Auto-generate visit reference
+            parts = d4.get('eng_full','').strip().split()
+            initials = (parts[0][0] + parts[-1][:2]).upper() if len(parts) >= 2 else 'ENG'
+            idi  = d4.get('idi_no',  '')
+            taw  = d4.get('taw_pol', '')
+            ins  = d4.get('ins_type', 'Malath')
+            nt   = d4.get('nt_ft', 'NT')
+            if ins == 'Tawuniya' and taw:
+                auto_ref = '{}-V{}-{}'.format(initials, n, taw)
+            elif idi:
+                auto_ref = '{}-V{}-{}{}'.format(initials, n, nt, idi)
+            else:
+                auto_ref = '{}-V{}'.format(initials, n)
+            st.session_state.rd3_visits.append({
+                'ref': auto_ref, 'date': '', 'inspector': eng, 'part': 'Waterproofing'
+            })
             st.rerun()
     else:
         st.caption("Maximum 10 visit rows")
