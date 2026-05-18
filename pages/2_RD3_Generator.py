@@ -121,9 +121,14 @@ if step == 1:
                 st.rerun()
 
             name = selected
+            # ── Persist name immediately so it's never lost ─────────────────
+            if name:
+                st.session_state.rd3_data['eng_full'] = name.strip()
         else:
             name = st.text_input("Full Name (First Last) *", placeholder="Mohamed Mossad",
                                  key="rd3_eng_name_text")
+            if name:
+                st.session_state.rd3_data['eng_full'] = name.strip()
 
         if name:
             parts = name.strip().split()
@@ -328,7 +333,7 @@ elif step == 3:
     with tab3:
         c1, c2 = st.columns(2)
         with c1:
-            # Regenerate reference if IDI/policy changed
+            # Always auto-compute short_ref — never let user corrupt it
             auto_ref, auto_short = build_rd3_reference(
                 d.get('eng_full',''), d.get('nt_ft','NT'),
                 d.get('idi_no',''), d.get('taw_pol',''),
@@ -336,45 +341,60 @@ elif step == 3:
             )
             d['rd3_ref']   = st.text_input("RD3 Document Reference",
                                             value=d.get('rd3_ref', auto_ref), key="rd3_ref_edit")
-            d['short_ref'] = st.text_input("Short Ref. (Ref.: line in report)",
-                                            value=d.get('short_ref', auto_short), key="rd3_sref_edit")
+            # short_ref is ALWAYS derived from the full ref — not user-editable
+            d['short_ref'] = auto_short
+            st.info("**Short Ref (Ref.: line):** `{}`".format(auto_short))
         with c2:
             st.info(
                 "**Full ref**: `{}`\n\n"
                 "**Body line** `Ref.:  {}`\n\n"
                 "**File name**: `{}.docx`".format(
-                    d.get('rd3_ref','—'), d.get('short_ref','—'), d.get('rd3_ref','RD3_Report')
+                    d.get('rd3_ref', auto_ref), auto_short, d.get('rd3_ref', auto_ref)
                 )
             )
 
     st.markdown("---")
-    # Defects and conclusion
+    # Defects and conclusion — default N/A, required
     c1, c2 = st.columns(2)
     with c1:
-        d['defects_text']      = st.text_area("III – Defects / Disorders (write 'None' if none)",
+        d['defects_text']      = st.text_area("III – Defects / Disorders *",
                                                value=d.get('defects_text','None'),
-                                               height=70, key="rd3_defects")
-        d['reservations_text'] = st.text_area("IV – Technical Reservations Not Closed (write 'None' if none)",
+                                               height=70, key="rd3_defects",
+                                               help="Write 'None' if no defects")
+        d['reservations_text'] = st.text_area("IV – Technical Reservations Not Closed *",
                                                value=d.get('reservations_text','None'),
-                                               height=70, key="rd3_reservations")
+                                               height=70, key="rd3_reservations",
+                                               help="Write 'None' if no open reservations")
     with c2:
+        # Auto-fill last visit date into conclusion text
+        last_date = st.session_state.rd3_visits[-1].get('date','___') if st.session_state.rd3_visits else '___'
+        default_conc = 'At the final visit done on {}, no defects in the waterproofing were noticed or observed.'.format(last_date)
         d['conclusion_text'] = st.text_area(
-            "IV – Final Conclusion Text",
-            value=d.get('conclusion_text',
-                        'At the final visit done on {}, no defects in the waterproofing '
-                        'were noticed or observed.'.format(
-                            st.session_state.rd3_visits[-1].get('date','') if st.session_state.rd3_visits else ''
-                        )),
+            "IV – Final Conclusion Text *",
+            value=d.get('conclusion_text', default_conc),
             height=80, key="rd3_conclusion"
         )
         d['conclusion_yn'] = st.radio("Conclusion: Works adapted to project?",
                                        ["YES", "NO"], horizontal=True, key="rd3_conc_yn")
 
+    # Validate required fields
+    s3_errors = []
+    if not d.get('project_title','').strip(): s3_errors.append("Project Title")
+    if not d.get('owner','').strip():         s3_errors.append("Owner")
+    if not d.get('address','').strip():       s3_errors.append("Address")
+    if not d.get('occ_date','').strip():      s3_errors.append("Occupancy Date")
+    if not d.get('defects_text','').strip():  s3_errors.append("Defects text (write 'None')")
+    if not d.get('reservations_text','').strip(): s3_errors.append("Reservations (write 'None')")
+    if not d.get('conclusion_text','').strip(): s3_errors.append("Conclusion Text")
+
+    if s3_errors:
+        st.warning("⚠️ Required: " + ", ".join(s3_errors))
+
     c1, c2 = st.columns(2)
     with c1:
         if st.button("← Back", key="rd3_s3_back"): st.session_state.rd3_step = 2; st.rerun()
     with c2:
-        if st.button("Next →", type="primary", key="rd3_s3_next"):
+        if st.button("Next →", type="primary", disabled=bool(s3_errors), key="rd3_s3_next"):
             st.session_state.rd3_data = d
             st.session_state.rd3_step = 4; st.rerun()
 
@@ -561,9 +581,11 @@ elif step == 5:
             st.markdown("**Works Description**")
             c1, c2 = st.columns(2)
             fdesc_i1 = c1.text_area("I.1. Describe the façade (type, materials, layers, location):",
-                                     height=100, key="rd3_f_desc_i1")
-            fdesc_i2 = c2.text_area("I.2. Describe the waterproofing layers:",
-                                     height=100, key="rd3_f_desc_i2")
+                                     value='N/A', height=90, key="rd3_f_desc_i1")
+            fdesc_i2 = c2.text_area("I.2. Identify waterproofing junctions (location, material, manufacturer):",
+                                     value='N/A', height=90, key="rd3_f_desc_i2")
+            fdesc_i3 = c1.text_area("I.3. Describe junctions with other elements (roofs, floors, balconies):",
+                                     value='N/A', height=90, key="rd3_f_desc_i3")
 
             st.markdown("**Materials**")
             c1, c2, c3 = st.columns(3)
@@ -614,6 +636,7 @@ elif step == 5:
                 'other_type_text':         fac_other_text,
                 'description_i1':          fdesc_i1,
                 'description_i2':          fdesc_i2,
+                'description_i3':          fdesc_i3,
                 'delivery_yn':             fdel_yn,
                 'compliant_yn':            fcomp_yn,
                 'ponding_yn':              fpond_yn,
@@ -750,6 +773,8 @@ elif step == 6:
     if not TPL.exists():
         st.error("Template not found: `{}`  —  Upload Template_RD3.docx to the repo root.".format(TPL))
         st.info("📁 Expected path: repo root → `Template_RD3.docx`")
+    elif not d.get('eng_full','').strip():
+        st.error("⚠️ Engineer name is missing — go back to Step 1 and select an engineer.")
     else:
         if st.button("🚀 Generate RD3 Report", type="primary", key="rd3_gen_btn"):
             with st.spinner("Building RD3 report…"):
