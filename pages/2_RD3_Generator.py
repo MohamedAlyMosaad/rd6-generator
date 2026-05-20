@@ -197,14 +197,19 @@ if step == 1:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 2 — Policy Upload
+# STEP 2 — Documents Upload & Auto-Extract
 # ═══════════════════════════════════════════════════════════════════════════════
 elif step == 2:
-    st.markdown('<div class="step-title">Step 2 — Policy Upload</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-title">Step 2 — Upload Documents (Auto-Fill)</div>', unsafe_allow_html=True)
+    st.info("📄 Upload your project documents below — the app will extract and fill all fields automatically.")
 
-    c1, c2 = st.columns([3, 2])
-    with c1:
-        st.markdown("**Upload Malath or Tawuniya Policy PDF**")
+    tab_policy, tab_warranty, tab_visits, tab_arch = st.tabs([
+        "📋 Policy PDF", "🛡️ Warranty Certificate", "🔍 Visit Reports", "🏗️ Arch Drawings (optional)"
+    ])
+
+    # ── TAB 1: Policy PDF ─────────────────────────────────────────────────────
+    with tab_policy:
+        st.markdown("**Malath or Tawuniya Policy PDF** ← Extracts: project ref, owner, address, IDI No.")
         pdf_file = st.file_uploader("Policy PDF", type=["pdf"], key="rd3_policy_pdf")
         if pdf_file:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
@@ -213,66 +218,151 @@ elif step == 2:
             try:
                 extracted = extract_from_policy_pdf(tmp_pdf)
                 st.session_state.rd3_data.update(extracted)
-                st.success("✅ Extracted: **{}** policy · IDI No: **{}**".format(
-                    extracted.get('ins_type','?'), extracted.get('idi_no','?')))
-                ins_type = extracted.get('ins_type', 'Malath')
-
-                # If Malath and IDI no found → look up Excel
+                st.success("✅ **{}** policy detected · IDI: **{}** · Owner: **{}**".format(
+                    extracted.get('ins_type','?'), extracted.get('idi_no','?'),
+                    extracted.get('owner','?')[:30]))
                 idi_no = extracted.get('idi_no', '')
                 if idi_no and EXCEL.exists():
-                    xl_data = lookup_from_excel(str(EXCEL), idi_no)
-                    if xl_data:
-                        st.session_state.rd3_data.update(xl_data)
-                        st.success("✅ Pulled extra fields from malath_log.xlsx")
-                    else:
-                        st.info("IDI No. **{}** not found in malath_log.xlsx — fill fields manually in Step 3.".format(idi_no))
+                    xl = lookup_from_excel(str(EXCEL), idi_no)
+                    if xl:
+                        st.session_state.rd3_data.update(xl)
+                        st.success("✅ Extra fields pulled from malath_log.xlsx")
             except Exception as e:
-                st.error("PDF extraction failed: {}".format(e))
+                st.error("Policy PDF extraction failed: {}".format(e))
             finally:
                 try: os.unlink(tmp_pdf)
                 except: pass
 
-    with c2:
-        st.markdown("**Tawuniya Visit ID**")
-        taw_visit_id = st.text_input(
-            "Tawuniya Visit ID *",
-            value=st.session_state.rd3_data.get('taw_visit_id', ''),
-            placeholder="e.g. 1153490",
-            help="Found on the Tawuniya inspection portal",
-            key="rd3_taw_visit_id"
-        )
-        st.markdown("---")
-        st.info("💡 If the policy PDF is not available, skip it and fill all fields manually in Step 3.")
+        st.markdown("**Manual Reference Override** *(if no PDF available)*")
+        c1, c2 = st.columns(2)
+        with c1:
+            idi_manual = st.text_input("IDI / Reference No.", value=st.session_state.rd3_data.get('idi_no',''), key="rd3_idi_manual")
+            taw_manual = st.text_input("Tawuniya Policy No.", value=st.session_state.rd3_data.get('taw_pol',''), key="rd3_taw_manual")
+        with c2:
+            nt_ft_manual = st.selectbox("NT / FT", ['NT','FT'],
+                index=0 if st.session_state.rd3_data.get('nt_ft','NT')=='NT' else 1, key="rd3_nt_ft")
+            ins_type_manual = st.selectbox("Insurance Type", ['Malath','Tawuniya'],
+                index=0 if st.session_state.rd3_data.get('ins_type','Malath')=='Malath' else 1, key="rd3_ins_type")
+        taw_visit_id = st.text_input("Tawuniya Visit ID", value=st.session_state.rd3_data.get('taw_visit_id',''),
+                                     placeholder="e.g. 1153490", key="rd3_taw_visit_id")
 
-        # Manual IDI / Tawuniya policy override
-        st.markdown("**Manual Reference Override**")
-        idi_manual = st.text_input("IDI / Reference No.",
-                                   value=st.session_state.rd3_data.get('idi_no',''),
-                                   key="rd3_idi_manual")
-        taw_manual = st.text_input("Tawuniya Policy No. (TAW_POL)",
-                                   value=st.session_state.rd3_data.get('taw_pol',''),
-                                   key="rd3_taw_manual")
-        nt_ft_manual = st.selectbox("NT / FT",
-                                    options=['NT','FT'],
-                                    index=0 if st.session_state.rd3_data.get('nt_ft','NT')=='NT' else 1,
-                                    key="rd3_nt_ft")
-        ins_type_manual = st.selectbox("Insurance Type",
-                                       options=['Malath','Tawuniya'],
-                                       index=0 if st.session_state.rd3_data.get('ins_type','Malath')=='Malath' else 1,
-                                       key="rd3_ins_type")
+    # ── TAB 2: Warranty Certificate ───────────────────────────────────────────
+    with tab_warranty:
+        st.markdown("**Waterproofing Warranty Certificate PDF** ← Extracts: WP system description (I.2), owner, warranty dates")
+        st.caption("Accepts: Riyadh Chamber portal (mybusiness.chamber.sa), or any contractor warranty PDF in Arabic")
+        warranty_file = st.file_uploader("Warranty Certificate PDF", type=["pdf"], key="rd3_warranty_pdf")
 
+        if warranty_file:
+            w_bytes = warranty_file.read()
+            try:
+                from rd3_extractor import extract_from_warranty_pdf
+                w_data = extract_from_warranty_pdf(w_bytes)
+                st.session_state['_rd3_warranty'] = w_data
+
+                # Show what was extracted
+                found = {k: v for k, v in w_data.items() if v and k != 'wp_type_description'}
+                st.success("✅ Extracted {} fields from warranty certificate".format(len(found)))
+                c1, c2 = st.columns(2)
+                with c1:
+                    if w_data.get('owner'):         st.info("👤 Owner: **{}**".format(w_data['owner']))
+                    if w_data.get('plot_no'):        st.info("📍 Plot: **{}**".format(w_data['plot_no']))
+                    if w_data.get('location'):       st.info("📌 Location: **{}**".format(w_data['location']))
+                with c2:
+                    if w_data.get('warranty_start'): st.info("📅 Warranty from: **{}**".format(w_data['warranty_start']))
+                    if w_data.get('contractor'):     st.info("🏗️ Contractor: **{}**".format(w_data['contractor'][:50]))
+
+                if w_data.get('wp_type_arabic'):
+                    st.markdown("**Extracted WP system** *(Arabic)*:")
+                    st.code(w_data['wp_type_arabic'])
+                if w_data.get('wp_type_description'):
+                    st.markdown("**Auto-generated I.2 description** *(English)*:")
+                    st.success(w_data['wp_type_description'])
+                    st.caption("This will pre-fill the Annex I.2 field in Step 5")
+
+                # Pre-fill owner if not already set from policy
+                if w_data.get('owner') and not st.session_state.rd3_data.get('owner'):
+                    st.session_state.rd3_data['owner'] = w_data['owner']
+
+            except Exception as e:
+                st.error("Warranty extraction failed: {}".format(e))
+                import traceback; st.code(traceback.format_exc())
+
+        elif st.session_state.get('_rd3_warranty'):
+            w_data = st.session_state['_rd3_warranty']
+            st.info("✅ Warranty data already extracted (Owner: {}, WP: {})".format(
+                w_data.get('owner','?'), w_data.get('wp_type_arabic','?')[:40]))
+
+    # ── TAB 3: Visit Reports ──────────────────────────────────────────────────
+    with tab_visits:
+        st.markdown("**SOCOTEC Visit Reports DOCX** ← Extracts: visit refs, dates, inspector, photos as attachments")
+        st.caption("Upload ALL visit reports for this project — they will auto-populate the visits table")
+        visit_files = st.file_uploader("Visit Report DOCX files", type=["docx"],
+                                        accept_multiple_files=True, key="rd3_visit_docs")
+        if visit_files:
+            try:
+                from rd3_extractor import extract_from_visit_docx
+                extracted_visits = []
+                all_images = []
+                for vf in visit_files:
+                    vb = vf.read()
+                    vd = extract_from_visit_docx(vb)
+                    if vd.get('visit_ref') or vd.get('visit_date'):
+                        extracted_visits.append({
+                            'ref':       vd.get('visit_ref', vd.get('visit_no', '')),
+                            'date':      vd.get('visit_date', ''),
+                            'inspector': vd.get('inspector_name', st.session_state.rd3_data.get('eng_full','')),
+                            'part':      vd.get('visit_subject', 'Waterproofing'),
+                        })
+                    all_images.extend(vd.get('images', []))
+
+                if extracted_visits:
+                    st.success("✅ Extracted **{}** visit(s) from {} files".format(
+                        len(extracted_visits), len(visit_files)))
+                    for v in extracted_visits:
+                        st.write("  • {} — {} — {}".format(v['ref'], v['date'], v['inspector']))
+                    if st.button("Apply extracted visits to table", key="rd3_apply_visits"):
+                        st.session_state.rd3_visits = extracted_visits
+                        st.rerun()
+                else:
+                    st.warning("Visits not found in uploaded files — fields may be empty in those reports.")
+
+                if all_images:
+                    st.info("📷 **{}** photos extracted — will be added as attachments to the report".format(len(all_images)))
+                    st.session_state['_rd3_visit_images'] = all_images
+
+            except Exception as e:
+                st.error("Visit extraction failed: {}".format(e))
+
+    # ── TAB 4: Architectural Drawings ─────────────────────────────────────────
+    with tab_arch:
+        st.markdown("**Architectural Drawings PDF** *(optional)* ← Extracts: facade materials, building type")
+        arch_file = st.file_uploader("Architectural Drawings PDF", type=["pdf"], key="rd3_arch_pdf")
+        if arch_file:
+            ab = arch_file.read()
+            try:
+                from rd3_extractor import extract_facade_from_arch_pdf
+                a_data = extract_facade_from_arch_pdf(ab)
+                st.session_state['_rd3_arch'] = a_data
+                st.success("✅ Extracted facade information from drawings")
+                st.info("🏗️ Building type: **{}** ({})".format(a_data['building_type'], a_data['floors']))
+                st.success("**Auto-generated façade I.1:**\n\n" + a_data['facade_description'])
+                st.caption("This will pre-fill the Annex 2 Façade I.1 description in Step 5")
+            except Exception as e:
+                st.error("Arch PDF extraction failed: {}".format(e))
+
+    # ── Navigation ────────────────────────────────────────────────────────────
+    st.markdown("---")
     c1b, c2b = st.columns(2)
     with c1b:
         if st.button("← Back", key="rd3_s2_back"):
             st.session_state.rd3_step = 1; st.rerun()
     with c2b:
         if st.button("Next →", type="primary", key="rd3_s2_next"):
-            if idi_manual:  st.session_state.rd3_data['idi_no']   = idi_manual
-            if taw_manual:  st.session_state.rd3_data['taw_pol']  = taw_manual
-            st.session_state.rd3_data['nt_ft']       = nt_ft_manual
-            st.session_state.rd3_data['ins_type']    = ins_type_manual
-            st.session_state.rd3_data['taw_visit_id']= taw_visit_id.strip()
-            # Auto-generate reference
+            if idi_manual:  st.session_state.rd3_data['idi_no']  = idi_manual
+            if taw_manual:  st.session_state.rd3_data['taw_pol'] = taw_manual
+            st.session_state.rd3_data['nt_ft']        = nt_ft_manual
+            st.session_state.rd3_data['ins_type']     = ins_type_manual
+            st.session_state.rd3_data['taw_visit_id'] = taw_visit_id.strip()
             rd3_ref, short_ref = build_rd3_reference(
                 st.session_state.rd3_data.get('eng_full',''),
                 st.session_state.rd3_data.get('nt_ft','NT'),
@@ -282,7 +372,6 @@ elif step == 2:
             )
             st.session_state.rd3_data['rd3_ref']   = rd3_ref
             st.session_state.rd3_data['short_ref'] = short_ref
-            # Pre-populate visits from Excel if available
             if not st.session_state.rd3_visits and st.session_state.rd3_data.get('visits'):
                 st.session_state.rd3_visits = list(st.session_state.rd3_data['visits'])
             st.session_state.rd3_step = 3
@@ -484,6 +573,32 @@ elif step == 5:
     st.markdown("---")
     annex_data = {}
 
+    # ── Get smart defaults from extracted documents ────────────────────────────
+    warranty  = st.session_state.get('_rd3_warranty', {})
+    arch_data = st.session_state.get('_rd3_arch', {})
+    last_visit_date = (st.session_state.rd3_visits[-1].get('date','')
+                       if st.session_state.rd3_visits else '')
+
+    # Pre-fill WP description from warranty
+    _wp_default_i2_roof = warranty.get('wp_type_description', '') or \
+        st.session_state.get('rd3_r_desc_i2', '')
+    _facade_default_i1  = arch_data.get('facade_description', '') or \
+        st.session_state.get('rd3_f_desc_i1', '')
+
+    # Pre-fill reviewed docs with warranty cert info
+    _warranty_doc_name = ''
+    if warranty.get('contractor') and warranty.get('warranty_start'):
+        _warranty_doc_name = 'Waterproofing warranty certificate ({})'.format(
+            warranty.get('warranty_start', ''))
+    elif warranty:
+        _warranty_doc_name = 'Waterproofing warranty certificate'
+
+    # Pre-fill visit images as attachments
+    if st.session_state.get('_rd3_visit_images') and '_rd3_visit_images_saved' not in st.session_state:
+        st.session_state['_rd3_visit_images_saved'] = True
+        st.info("📷 {} photos from visit reports will be added as attachments automatically.".format(
+            len(st.session_state['_rd3_visit_images'])))
+
     # Description template library
     ROOF_TEMPLATES = {
         "Bituminous membrane — residential roof + wet areas": {
@@ -583,7 +698,7 @@ elif step == 5:
                                     value=st.session_state.get('rd3_r_desc_i1',''),
                                     height=100, key="rd3_r_desc_i1")
             desc_i2 = c2.text_area("I.2. Describe the waterproofing system layers (material, manufacturer, thickness):",
-                                    value=st.session_state.get('rd3_r_desc_i2',''),
+                                    value=st.session_state.get('rd3_r_desc_i2', _wp_default_i2_roof),
                                     height=100, key="rd3_r_desc_i2")
             desc_i3 = c1.text_area("I.3. Describe junctions (façade, vertical surfaces, etc.):",
                                     value=st.session_state.get('rd3_r_desc_i3',''),
@@ -695,7 +810,7 @@ elif step == 5:
             st.markdown("**Works Description**")
             c1, c2 = st.columns(2)
             fdesc_i1 = c1.text_area("I.1. Describe the façade (type, materials, layers, location):",
-                                     value=st.session_state.get('rd3_f_desc_i1','N/A'), height=90, key="rd3_f_desc_i1")
+                                     value=st.session_state.get('rd3_f_desc_i1', _facade_default_i1 or 'N/A'), height=90, key="rd3_f_desc_i1")
             fdesc_i2 = c2.text_area("I.2. Identify waterproofing junctions (location, material, manufacturer):",
                                      value=st.session_state.get('rd3_f_desc_i2','N/A'), height=90, key="rd3_f_desc_i2")
             fdesc_i3 = c1.text_area("I.3. Describe junctions with other elements (roofs, floors, balconies):",
@@ -909,10 +1024,13 @@ elif step == 6:
                         out = tmp.name
                     # Prepare signature bytes
                     sig_b = st.session_state.get('_rd3_sig_bytes', None)
-                    # Prepare attachments
+                    # Combine manual attachments + visit report images
                     attach_list = None
+                    visit_imgs = st.session_state.get('_rd3_visit_images', [])
                     if att_files:
                         attach_list = [(f.name, f.read()) for f in att_files]
+                    if visit_imgs:
+                        attach_list = (attach_list or []) + visit_imgs
                     generate_rd3(
                         template_path = str(TPL),
                         output_path   = out,
