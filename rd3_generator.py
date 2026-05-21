@@ -119,10 +119,16 @@ def _append_text_to_cell_last_para(tc_elem, text):
 # ── python-docx cell helper (uses high-level API for reliable fill) ───────────
 
 def _fill_expert_cell(table, row_idx, col_idx, text):
-    """Fill a cell using python-docx API (reliable for cells with multiple empty paras)."""
+    """Fill expert cell — removes extra empty paragraphs so all cells stay at equal height."""
     cell = table.rows[row_idx].cells[col_idx]
-    for para in cell.paragraphs:
-        para.clear()
+    tc = cell._tc
+    # Remove all paragraphs except the first (extra empty paras cause misaligned rows)
+    all_paras = tc.findall(f'.//{{{W}}}p')
+    for p in all_paras[1:]:
+        parent = p.getparent()
+        if parent is not None and parent.tag != f'{{{W}}}tbl':
+            parent.remove(p)
+    cell.paragraphs[0].clear()
     run = cell.paragraphs[0].add_run(text)
     run.bold = True
     run.font.size = Pt(9)
@@ -222,7 +228,7 @@ def _fill_signature_blocks(body, data):
     # Format date dd-mm-yyyy
     try:
         parts = issue_str.split('/')
-        issue_fmt = '{:02d}-{:02d}-{}'.format(int(parts[0]), int(parts[1]), parts[2])
+        issue_fmt = '{:02d}/{:02d}/{}'.format(int(parts[0]), int(parts[1]), parts[2])
     except Exception:
         issue_fmt = issue_str
 
@@ -375,21 +381,20 @@ def _fill_table2(table, data, visits):
                                         v.get('inspector',''), v.get('part','')]):
                 _fill_cell_text_tc(tc, val)
 
-    # Row 11: conclusion
+    # Row 11: conclusion — use _tc.iter to reach nested YES/NO paragraph
     if len(table.rows) > 11:
-        conc_cell = table.rows[11].cells[0]
-        for para in conc_cell.paragraphs:
-            txt = para.text
-            if '\u2610 YES' in txt and '\u2610 NO' in txt:
-                if data.get('conclusion_yn', 'YES') == 'YES':
-                    _set_para_text(para._p, txt.replace('\u2610 YES', '\u2612 YES'))
-                else:
-                    _set_para_text(para._p, txt.replace('\u2610 NO', '\u2612 NO'))
-            elif 'Please expose' in txt or 'develop' in txt.lower():
-                conc_txt = data.get('conclusion_text', '')
-                if conc_txt:
-                    run = para.add_run('\n\n' + conc_txt)
-                    run.font.size = Pt(9); run.font.color.rgb = BLUE
+        conc_tc = table.rows[11].cells[0]._tc
+        conc_yn = data.get('conclusion_yn', 'YES')
+        for p in conc_tc.iter(f'{{{W}}}p'):
+            ptxt = _get_text(p)
+            if '☐ YES' in ptxt and '☐ NO' in ptxt:
+                new_txt = ptxt.replace('☐ YES', '☒ YES', 1) if conc_yn == 'YES' else \
+                          ptxt.replace('☐ NO',  '☒ NO',  1)
+                _set_para_text(p, new_txt)
+                break
+        conc_text = data.get('conclusion_text', '')
+        if conc_text:
+            _append_text_to_cell_last_para(conc_tc, conc_text)
 
 
 # ── Annex table filler ────────────────────────────────────────────────────────
@@ -414,35 +419,39 @@ def _fill_annex_table(table, ann, annex_type):
                 r2 = para.add_run(ann['description_i2'])
                 r2.font.size = Pt(9); r2.font.color.rgb = BLUE
             elif txt.startswith('I.3.') and ann.get('description_i3'):
-                # I.3 exists for all annex types (roofs, facades, basements)
                 para.clear()
                 r1 = para.add_run(txt + '\n\n')
                 r1.font.size = Pt(9)
                 r2 = para.add_run(ann['description_i3'])
                 r2.font.size = Pt(9); r2.font.color.rgb = BLUE
+            elif 'I.4.' in txt and '☐' in txt:
+                # I.4 innovative technique YES/NO — ALL annex types
+                inn = ann.get('innovative_yn', 'NO')
+                para.clear()
+                r1 = para.add_run(txt.replace('☐ YES', '☒ YES' if inn == 'YES' else '☐ YES')
+                                     .replace('☐ NO',  '☒ NO'  if inn == 'NO'  else '☐ NO'))
+                r1.font.size = Pt(9)
 
-    # Materials row (row 4 for roofs/facades, row 3 for basements)
+    # Materials row
     mat_row = 4 if annex_type != 'basement' else 3
     if len(table.rows) > mat_row:
-        mat_cell = table.rows[mat_row].cells[0]
-        _fill_materials_cell(mat_cell, ann)
+        _fill_materials_cell(table.rows[mat_row].cells[0], ann)
 
-    # YES/NO checkboxes in materials cell (SDT-based — already handled in _toggle_all_sdts)
-
-    # Conclusion (last row)
-    conc_row = len(table.rows) - 1
-    conc_cell = table.rows[conc_row].cells[0]
-    for para in conc_cell.paragraphs:
-        txt = para.text
-        if '\u2610 YES' in txt and '\u2610 NO' in txt:
-            if ann.get('conclusion_yn', 'YES') == 'YES':
-                _set_para_text(para._p, txt.replace('\u2610 YES', '\u2612 YES'))
-            else:
-                _set_para_text(para._p, txt.replace('\u2610 NO', '\u2612 NO'))
-        elif 'Please expose' in txt or 'develop' in txt.lower():
+    # Conclusion — use _tc.iter to reach nested YES/NO paragraph
+    last_tc = table.rows[-1].cells[0]._tc
+    conc_yn = ann.get('conclusion_yn', 'YES')
+    for p in last_tc.iter(f'{{{W}}}p'):
+        txt = _get_text(p)
+        if '☐ YES' in txt and '☐ NO' in txt:
+            new_txt = txt.replace('☐ YES', '☒ YES') if conc_yn == 'YES' else \
+                      txt.replace('☐ NO',  '☒ NO')
+            _set_para_text(p, new_txt)
+        elif 'Please expose' in txt or 'developpe' in txt.lower():
             if ann.get('conclusion_text'):
-                run = para.add_run('\n\n' + ann['conclusion_text'])
-                run.font.size = Pt(9); run.font.color.rgb = BLUE
+                r = etree.SubElement(p, f'{{{W}}}r')
+                te = etree.SubElement(r, f'{{{W}}}t')
+                te.text = '\n\n' + ann['conclusion_text']
+                te.set(XML_SPACE, 'preserve')
 
 
 def _fill_materials_cell(cell, ann):
@@ -709,121 +718,115 @@ def generate_rd3(template_path, output_path, data, visits, annex_data,
 # ═══ ADDITIONAL HELPERS FOR MISSING SECTIONS ═══════════════════════════════
 
 
-def _toggle_plain_cb(container_elem, phrase, answer, replace_first=True):
-    """
-    Find paragraph containing phrase inside container_elem (searches nested tables too).
-    Toggle '☐ YES' or '☐ NO' to '☒ YES' / '☒ NO' accordingly.
-    """
-    for p in container_elem.iter(f'{{{W}}}p'):
-        txt = _get_text(p)
-        if phrase in txt and '☐' in txt:
-            if answer == 'YES':
-                new = txt.replace('☐ YES', '☒ YES', 1 if replace_first else -1)
-            else:
-                new = txt.replace('☐ NO', '☒ NO', 1 if replace_first else -1)
-            # Also handle no-space variant
-            new = new.replace('☐YES', '☒YES') if answer == 'YES' else new.replace('☐NO', '☒NO')
+def _toggle_adjacent_cb(cell_tc, nested_tbl_idx, row_idx, answer):
+    """Toggle ☐ in cell1 of a nested table row (question in cell0, checkbox in cell1)."""
+    ntbls = cell_tc.findall(f'.//{{{W}}}tbl')
+    if nested_tbl_idx >= len(ntbls): return False
+    tr_list = ntbls[nested_tbl_idx].findall(f'{{{W}}}tr')
+    if row_idx >= len(tr_list): return False
+    for tc in reversed(tr_list[row_idx].findall(f'.//{{{W}}}tc')):
+        txt = ''.join(t.text or '' for t in tc.iter(f'{{{W}}}t'))
+        if '☐' in txt:
+            for p in tc.iter(f'{{{W}}}p'):
+                ptxt = ''.join(t.text or '' for t in p.iter(f'{{{W}}}t'))
+                if '☐' in ptxt:
+                    new = ptxt.replace('☐ YES', '☒ YES', 1) if answer == 'YES' else \
+                          ptxt.replace('☐ NO',  '☒ NO',  1)
+                    _set_para_text(p, new)
+                    return True
+    return False
+
+
+def _toggle_standalone_cb_by_phrase(cell_tc, phrase, answer):
+    """Find a row containing phrase and toggle its adjacent checkbox."""
+    ntbls = cell_tc.findall(f'.//{{{W}}}tbl')
+    for ni, nt in enumerate(ntbls):
+        for ri, tr in enumerate(nt.findall(f'{{{W}}}tr')):
+            row_txt = ''.join(t.text or '' for t in tr.iter(f'{{{W}}}t'))
+            if phrase.lower() in row_txt.lower():
+                if _toggle_adjacent_cb(cell_tc, ni, ri, answer):
+                    return True
+    # Fallback: search direct paragraphs
+    for p in cell_tc.iter(f'{{{W}}}p'):
+        ptxt = ''.join(t.text or '' for t in p.iter(f'{{{W}}}t'))
+        if phrase.lower() in ptxt.lower() and '☐' in ptxt:
+            new = ptxt.replace('☐ YES', '☒ YES', 1) if answer == 'YES' else \
+                  ptxt.replace('☐ NO',  '☒ NO',  1)
             _set_para_text(p, new)
             return True
     return False
 
 
-def _add_ref_after_phrase(container_elem, phrase, ref_text):
-    """Find paragraph with phrase and append ref_text after it."""
-    for p in container_elem.iter(f'{{{W}}}p'):
-        txt = _get_text(p)
-        if phrase in txt:
-            combined = txt.rstrip() + ' ' + ref_text
-            _set_para_text(p, combined)
-            return True
-    return False
-
-
 def _fill_annex_extras(tbl, ann, annex_type):
-    """
-    Fill the sections not covered by _fill_annex_table:
-    - III Modifications (rows 6/6/5 for roof/facade/basement)
-    - IV Defects/Tests (rows 8/8/7)
-    - V Reservations (rows 10/10/9)
-    - Conclusion nested YES/NO (last row nested table)
-    """
-    # Row index mapping per annex type
-    if annex_type == 'basement':
-        mod_row, def_row, res_row = 5, 7, 9
-    else:  # roof and facade
-        mod_row, def_row, res_row = 6, 8, 10
+    """Fill modifications, defects, reservations, and conclusion checkboxes in annex tables."""
+    mod_row, def_row, res_row = (5, 7, 9) if annex_type == 'basement' else (6, 8, 10)
+    mods_yn = ann.get('modifications_yn', 'NO')
+    def_yn  = ann.get('defects_observed_yn', 'NO')
 
-    # ── III Modifications ──────────────────────────────────────────────────
+    # ── III Modifications ────────────────────────────────────────────────────
     if mod_row < len(tbl.rows):
-        mod_cell = tbl.rows[mod_row].cells[0]._tc
-        mods_yn = ann.get('modifications_yn', 'NO')
-        _toggle_plain_cb(mod_cell, 'modification of the waterproofing', mods_yn)
+        mod_tc = tbl.rows[mod_row].cells[0]._tc
+        _toggle_adjacent_cb(mod_tc, 0, 0, mods_yn)   # main question: nested tbl 0, row 0
         if mods_yn == 'YES':
-            # validation?
-            _toggle_plain_cb(mod_cell, 'validation of the modification', ann.get('mod_validation_yn', 'YES'))
-            # TIS acceptable?
-            _toggle_plain_cb(mod_cell, 'TIS find acceptable', ann.get('mod_acceptable_yn', 'YES'))
-            # execution satisfactory?
-            _toggle_plain_cb(mod_cell, 'execution satisfactory', ann.get('mod_execution_yn', 'YES'))
-        else:
-            # All sub-questions N/A → leave as ☐ (no change needed)
-            pass
+            _toggle_adjacent_cb(mod_tc, 1, 0, ann.get('mod_validation_yn', 'YES'))
+            _toggle_adjacent_cb(mod_tc, 1, 2, ann.get('mod_acceptable_yn', 'YES'))
+            _toggle_adjacent_cb(mod_tc, 1, 4, ann.get('mod_execution_yn',  'YES'))
 
-    # ── IV Defects / Roof tests ────────────────────────────────────────────
+    # ── IV Defects / Waterproofing Tests ─────────────────────────────────────
     if def_row < len(tbl.rows):
-        def_cell = tbl.rows[def_row].cells[0]._tc
-        def_yn = ann.get('defects_observed_yn', 'NO')
-        _toggle_plain_cb(def_cell, 'observe any defect', def_yn)
-        _toggle_plain_cb(def_cell, 'infiltration', def_yn)
+        def_tc = tbl.rows[def_row].cells[0]._tc
+        _toggle_adjacent_cb(def_tc, 0, 0, def_yn)    # defect question: nested tbl 0, row 0
         if def_yn == 'YES':
             ref = ann.get('defects_ref', '')
             if ref:
-                _add_ref_after_phrase(def_cell, 'please issue a technical reservation. Ref.:', ref)
-            brief = ann.get('defects_brief', '')
-            if brief:
-                _add_ref_after_phrase(def_cell, 'Describe it briefly:', brief)
+                for p in def_tc.iter(f'{{{W}}}p'):
+                    ptxt = ''.join(t.text or '' for t in p.iter(f'{{{W}}}t'))
+                    if 'Ref.:' in ptxt and 'please issue' in ptxt.lower():
+                        t_elems = list(p.iter(f'{{{W}}}t'))
+                        if t_elems: t_elems[-1].text = (t_elems[-1].text or '') + ' ' + ref
+                        break
 
-    # ── V Reservations ────────────────────────────────────────────────────
+    # ── V Reservations ────────────────────────────────────────────────────────
     if res_row < len(tbl.rows):
-        res_cell = tbl.rows[res_row].cells[0]._tc
-        _toggle_plain_cb(res_cell, 'issued and closed', ann.get('reservations_closed_yn', 'NO'))
-        _toggle_plain_cb(res_cell, 'issued not closed',  ann.get('reservations_open_yn',   'NO'))
+        res_tc = tbl.rows[res_row].cells[0]._tc
+        _toggle_standalone_cb_by_phrase(res_tc, 'issued and closed',
+                                        ann.get('reservations_closed_yn', 'NO'))
+        _toggle_standalone_cb_by_phrase(res_tc, 'issued not closed',
+                                        ann.get('reservations_open_yn',   'NO'))
 
-    # ── Conclusion nested YES/NO (last row of each annex table) ───────────
-    last_row_cell = tbl.rows[-1].cells[0]._tc
+    # ── Conclusion YES/NO — search all paragraphs in last row via _tc.iter ────
+    last_tc = tbl.rows[-1].cells[0]._tc
     conc_yn = ann.get('conclusion_yn', 'YES')
-    _toggle_plain_cb(last_row_cell,
-                     'IS THE EXECUTION OF WORKS ADAPTED TO THE PROJECT',
-                     conc_yn)
+    for p in last_tc.iter(f'{{{W}}}p'):
+        ptxt = ''.join(t.text or '' for t in p.iter(f'{{{W}}}t'))
+        if ptxt.strip() in ('☐ YES☐ NO', '☐ YES ☐ NO') or \
+           (ptxt.strip().startswith('☐') and 'YES' in ptxt and 'NO' in ptxt):
+            new = ptxt.replace('☐ YES', '☒ YES', 1) if conc_yn == 'YES' else \
+                  ptxt.replace('☐ NO',  '☒ NO',  1)
+            _set_para_text(p, new)
+            break
 
 
 def _fill_t2_defects_reservations(table, data):
-    """Fill T2 row 7 (defects list) and row 9 (reservations) in main report."""
+    """Fill T2 row 7 (defects) and row 9 (reservations checkboxes)."""
     defects = data.get('defects_text', 'None')
-    reservations = data.get('reservations_text', 'None')
 
-    # Row 7: defects — write into first empty paragraph after the instruction
+    # Row 7: defects text
     if len(table.rows) > 7:
         cell7 = table.rows[7].cells[0]
         paras = cell7.paragraphs
         for pi, para in enumerate(paras):
             if 'Please list below' in para.text:
-                # Write defects text into next empty para
                 for ep in paras[pi+1:]:
                     if not ep.text.strip():
                         run = ep.add_run(defects)
-                        run.font.size = Pt(9)
-                        run.font.color.rgb = BLUE
+                        run.font.size = Pt(9); run.font.color.rgb = BLUE
                         break
                 break
 
-    # Row 9: reservations area
+    # Row 9: toggle reservations checkboxes (do NOT add "None" text above the table)
     if len(table.rows) > 9:
-        cell9 = table.rows[9].cells[0]
-        paras9 = cell9.paragraphs
-        for ep in paras9:
-            if not ep.text.strip():
-                run = ep.add_run(reservations)
-                run.font.size = Pt(9)
-                run.font.color.rgb = BLUE
-                break
+        cell9_tc = table.rows[9].cells[0]._tc
+        has_res = data.get('reservations_text','').strip().lower() not in ('none','n/a','')
+        _toggle_standalone_cb_by_phrase(cell9_tc, 'issued not closed', 'YES' if has_res else 'NO')
+        _toggle_standalone_cb_by_phrase(cell9_tc, 'issued and closed', 'NO')
