@@ -206,3 +206,27 @@ def extract_facade_from_arch_pdf(path_or_bytes):
         'building_type': 'commercial' if any(w in norm for w in ['تجاري','مكتبي']) else 'residential',
         'floors': floors,
     }
+
+
+def lookup_malath_from_tawuniya(excel_path, taw_pol_no):
+    """
+    Reverse lookup: given a Tawuniya policy number, return the Malath IDI number.
+    Uses the Tuw-Mlth sheet in malath_log.xlsx.
+    Returns str IDI or None if not found.
+    """
+    import openpyxl
+    try:
+        target = str(taw_pol_no).strip().replace('.0', '')
+        wb = openpyxl.load_workbook(excel_path, data_only=True)
+        if 'Tuw-Mlth' not in wb.sheetnames:
+            return None
+        ws = wb['Tuw-Mlth']
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            # row[1] = Malath IDI, row[2] = Tawuniya policy
+            taw = str(row[2]).strip().replace('.0', '') if row[2] is not None else ''
+            if taw == target:
+                idi = str(row[1]).strip().replace('.0', '') if row[1] is not None else ''
+                return idi if idi else None
+    except Exception:
+        pass
+    return None
