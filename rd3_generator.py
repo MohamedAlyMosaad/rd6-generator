@@ -537,37 +537,51 @@ def _toggle_all_sdts(body, annex_data):
 # ── Attachments ───────────────────────────────────────────────────────────────
 
 def _add_attachments(doc, attachments):
-    """Add attachments at end of document. Images displayed inline; PDFs referenced by name."""
+    """Add attachments at end of document. Images displayed inline; PDFs as styled reference."""
     if not attachments:
         return
     from io import BytesIO
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
+    # Header
     para = doc.add_paragraph()
     run = para.add_run('ATTACHMENTS')
     run.bold = True; run.font.size = Pt(12); run.font.color.rgb = BLUE
 
+    pdf_refs = []  # collect PDFs to list at end
+
     for fname, fbytes in attachments:
-        # Page break
-        bp = doc.add_paragraph()
-        r = OxmlElement('w:r'); br = OxmlElement('w:br')
-        br.set(qn('w:type'), 'page'); r.append(br); bp._p.append(r)
-
-        # Caption
-        cap = doc.add_paragraph()
-        cap.add_run(fname).bold = True
-
-        # Try image; if PDF or fails just add reference note
         ext = fname.lower().split('.')[-1] if '.' in fname else ''
+
         if ext == 'pdf':
-            doc.add_paragraph('[ PDF document: {} — please attach separately ]'.format(fname))
+            # Don't add a page break for PDFs — just collect for reference list
+            pdf_refs.append(fname)
         else:
+            # Page break before each image attachment
+            bp = doc.add_paragraph()
+            r = OxmlElement('w:r'); br = OxmlElement('w:br')
+            br.set(qn('w:type'), 'page'); r.append(br); bp._p.append(r)
+            # Caption
+            cap = doc.add_paragraph()
+            cap.add_run(fname).bold = True
+            # Image
             try:
                 img_para = doc.add_paragraph()
                 img_para.add_run().add_picture(BytesIO(fbytes), width=Cm(15))
             except Exception:
-                doc.add_paragraph('[ Image: {} — could not render ]'.format(fname))
+                doc.add_paragraph('[ Image could not be rendered: {} ]'.format(fname))
+
+    # PDF reference section — clean list at the end
+    if pdf_refs:
+        doc.add_paragraph()
+        ref_head = doc.add_paragraph()
+        rh = ref_head.add_run('Documents to Attach (print and include with this report):')
+        rh.bold = True; rh.font.size = Pt(10)
+        for i, fname in enumerate(pdf_refs, 1):
+            p = doc.add_paragraph()
+            r = p.add_run('{}. {}'.format(i, fname))
+            r.font.size = Pt(10); r.font.color.rgb = BLUE
 
 
 # ── Break type fix ────────────────────────────────────────────────────────────
