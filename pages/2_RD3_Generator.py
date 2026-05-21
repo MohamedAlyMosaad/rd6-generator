@@ -217,16 +217,56 @@ elif step == 2:
                 tmp_pdf = tmp.name
             try:
                 extracted = extract_from_policy_pdf(tmp_pdf)
+                ins_type = extracted.get('ins_type', 'Malath')
+
+                # ── Tawuniya: extract policy number from filename, then lookup Malath IDI ──
+                if ins_type == 'Tawuniya' and not extracted.get('taw_pol'):
+                    import re as _re
+                    m = _re.search(r'\b(\d{5,7})\b', pdf_file.name)
+                    if m:
+                        extracted['taw_pol'] = m.group(1)
+
+                if ins_type == 'Tawuniya' and extracted.get('taw_pol') and EXCEL.exists():
+                    from rd3_extractor import lookup_malath_from_tawuniya
+                    malath_idi = lookup_malath_from_tawuniya(str(EXCEL), extracted['taw_pol'])
+                    if malath_idi:
+                        extracted['idi_no'] = malath_idi
+                        xl = lookup_from_excel(str(EXCEL), malath_idi)
+                        if xl:
+                            taw_bak = extracted['taw_pol']
+                            extracted.update(xl)
+                            extracted['taw_pol'] = taw_bak  # preserve Tawuniya number
+
+                # ── Malath: standard lookup ────────────────────────────────────────────
+                elif ins_type == 'Malath':
+                    idi_no = extracted.get('idi_no', '')
+                    if idi_no and EXCEL.exists():
+                        xl = lookup_from_excel(str(EXCEL), idi_no)
+                        if xl:
+                            extracted.update(xl)
+
                 st.session_state.rd3_data.update(extracted)
-                st.success("✅ **{}** policy detected · IDI: **{}** · Owner: **{}**".format(
-                    extracted.get('ins_type','?'), extracted.get('idi_no','?'),
-                    extracted.get('owner','?')[:30]))
-                idi_no = extracted.get('idi_no', '')
-                if idi_no and EXCEL.exists():
-                    xl = lookup_from_excel(str(EXCEL), idi_no)
-                    if xl:
-                        st.session_state.rd3_data.update(xl)
-                        st.success("✅ Extra fields pulled from malath_log.xlsx")
+
+                # ── Auto occupancy date: next month after issue date ────────────────
+                if not st.session_state.rd3_data.get('occ_date'):
+                    issue = st.session_state.rd3_data.get('issue_date', '')
+                    if issue:
+                        try:
+                            parts = issue.split('/')
+                            m_n, y_n = int(parts[1]), int(parts[2])
+                            nm = m_n + 1 if m_n < 12 else 1
+                            ny = y_n if m_n < 12 else y_n + 1
+                            st.session_state.rd3_data['occ_date'] = '{}/{}'.format(nm, ny)
+                        except Exception:
+                            pass
+
+                st.success("✅ **{}** policy · IDI: **{}** · Tawuniya: **{}** · Owner: **{}**".format(
+                    ins_type,
+                    extracted.get('idi_no','—'),
+                    extracted.get('taw_pol','—'),
+                    str(extracted.get('owner','—'))[:30]))
+                if extracted.get('rd0_ref'):
+                    st.info("📄 RD0: **{}**".format(extracted['rd0_ref']))
             except Exception as e:
                 st.error("Policy PDF extraction failed: {}".format(e))
             finally:
@@ -292,46 +332,46 @@ elif step == 2:
             st.info("✅ Warranty data already extracted (Owner: {}, WP: {})".format(
                 w_data.get('owner','?'), w_data.get('wp_type_arabic','?')[:40]))
 
-    # ── TAB 3: Visit Reports ──────────────────────────────────────────────────
+    # ── TAB 3: Final Visit Report ─────────────────────────────────────────────
     with tab_visits:
-        st.markdown("**SOCOTEC Visit Reports DOCX** ← Extracts: visit refs, dates, inspector, photos as attachments")
-        st.caption("Upload ALL visit reports for this project — they will auto-populate the visits table")
-        visit_files = st.file_uploader("Visit Report DOCX files", type=["docx"],
-                                        accept_multiple_files=True, key="rd3_visit_docs")
-        if visit_files:
+        st.markdown("**Final Visit Report DOCX** ← Extracts: visit ref, date, inspector, photos as attachments")
+        st.caption("Upload the FINAL visit report only — the visit date will auto-fill the conclusion text")
+        visit_file = st.file_uploader("Final Visit Report (DOCX)", type=["docx"],
+                                       key="rd3_final_visit_doc")
+        if visit_file:
             try:
                 from rd3_extractor import extract_from_visit_docx
-                extracted_visits = []
-                all_images = []
-                for vf in visit_files:
-                    vb = vf.read()
-                    vd = extract_from_visit_docx(vb)
-                    if vd.get('visit_ref') or vd.get('visit_date'):
-                        extracted_visits.append({
-                            'ref':       vd.get('visit_ref', vd.get('visit_no', '')),
-                            'date':      vd.get('visit_date', ''),
-                            'inspector': vd.get('inspector_name', st.session_state.rd3_data.get('eng_full','')),
-                            'part':      vd.get('visit_subject', 'Waterproofing'),
-                        })
-                    all_images.extend(vd.get('images', []))
-
-                if extracted_visits:
-                    st.success("✅ Extracted **{}** visit(s) from {} files".format(
-                        len(extracted_visits), len(visit_files)))
-                    for v in extracted_visits:
-                        st.write("  • {} — {} — {}".format(v['ref'], v['date'], v['inspector']))
-                    if st.button("Apply extracted visits to table", key="rd3_apply_visits"):
-                        st.session_state.rd3_visits = extracted_visits
-                        st.rerun()
-                else:
-                    st.warning("Visits not found in uploaded files — fields may be empty in those reports.")
-
-                if all_images:
-                    st.info("📷 **{}** photos extracted — will be added as attachments to the report".format(len(all_images)))
-                    st.session_state['_rd3_visit_images'] = all_images
-
+                vb = visit_file.read()
+                vd = extract_from_visit_docx(vb)
+                # Extract and store final visit date
+                final_date = vd.get('visit_date', '')
+                final_ref  = vd.get('visit_ref', visit_file.name.replace('.docx',''))
+                final_insp = vd.get('inspector_name', st.session_state.rd3_data.get('eng_full',''))
+                final_subj = vd.get('visit_subject', 'Final Waterproofing Inspection')
+                if final_date:
+                    st.session_state['_rd3_final_visit_date'] = final_date
+                    # Auto-update conclusion text with this date
+                    curr_conc = st.session_state.rd3_data.get('conclusion_text', '')
+                    if '___' in curr_conc or not curr_conc:
+                        st.session_state.rd3_data['conclusion_text'] = \
+                            'At the final visit done on {}, no defects in the waterproofing ' \
+                            'were noticed or observed.'.format(final_date)
+                    st.success("✅ Final visit date: **{}** · Ref: **{}** · Inspector: **{}**".format(
+                        final_date, final_ref, final_insp))
+                # Add to visits table if not already there
+                if st.button("Add final visit to table", key="rd3_add_final_visit"):
+                    st.session_state.rd3_visits.append({
+                        'ref': final_ref, 'date': final_date,
+                        'inspector': final_insp, 'part': final_subj,
+                    })
+                    st.rerun()
+                # Store images as attachments
+                if vd.get('images'):
+                    st.info("📷 {} photos extracted — will be added as attachments".format(
+                        len(vd['images'])))
+                    st.session_state['_rd3_visit_images'] = vd['images']
             except Exception as e:
-                st.error("Visit extraction failed: {}".format(e))
+                st.error("Visit report extraction failed: {}".format(e))
 
     # ── TAB 4: Architectural Drawings ─────────────────────────────────────────
     with tab_arch:
@@ -415,14 +455,27 @@ elif step == 3:
     with tab2:
         c1, c2 = st.columns(2)
         with c1:
-            d['occ_date']   = st.text_input("Occupancy Certificate Date (d/m/yyyy)",
-                                             value=d.get('occ_date',''), key="rd3_occ_date")
+            # Occupancy default: next month after issue date if not already set
+            if not d.get('occ_date'):
+                issue = d.get('issue_date', '')
+                if issue:
+                    try:
+                        parts = issue.split('/')
+                        m_n, y_n = int(parts[1]), int(parts[2])
+                        nm = m_n + 1 if m_n < 12 else 1
+                        ny = y_n if m_n < 12 else y_n + 1
+                        d['occ_date'] = '{}/{}'.format(nm, ny)
+                    except Exception:
+                        pass
+            d['occ_date']   = st.text_input("Occupancy Certificate Date (m/yyyy or d/m/yyyy)",
+                                             value=d.get('occ_date',''), key="rd3_occ_date",
+                                             help="Defaults to next month after report date")
             d['occ_status'] = st.radio("Occupancy Status", ["Expected", "Confirmed"],
                                         horizontal=True, key="rd3_occ_status")
         with c2:
             d['taw_visit_id'] = st.text_input("Tawuniya Visit ID",
                                                value=d.get('taw_visit_id',''), key="rd3_taw_id_s3")
-            d['idi_no']     = st.text_input("IDI / Reference No.",
+            d['idi_no']     = st.text_input("IDI / Reference No. (Malath)",
                                              value=d.get('idi_no',''), key="rd3_idi_s3")
             d['taw_pol']    = st.text_input("Tawuniya Policy No.",
                                              value=d.get('taw_pol',''), key="rd3_taw_s3")
@@ -463,12 +516,20 @@ elif step == 3:
                                                height=70, key="rd3_reservations",
                                                help="Write 'None' if no open reservations")
     with c2:
-        # Auto-fill last visit date into conclusion text
-        last_date = st.session_state.rd3_visits[-1].get('date','___') if st.session_state.rd3_visits else '___'
-        default_conc = 'At the final visit done on {}, no defects in the waterproofing were noticed or observed.'.format(last_date)
+        # Use final visit date from uploaded report, else last visit in table
+        final_v_date = st.session_state.get('_rd3_final_visit_date', '')
+        if not final_v_date and st.session_state.rd3_visits:
+            final_v_date = st.session_state.rd3_visits[-1].get('date', '___')
+        if not final_v_date:
+            final_v_date = '___'
+        default_conc = 'At the final visit done on {}, no defects in the waterproofing were noticed or observed.'.format(final_v_date)
+        # If current value has ___ but we now have a date, replace it
+        curr = d.get('conclusion_text', '')
+        if '___' in curr and final_v_date != '___':
+            curr = curr.replace('___', final_v_date)
         d['conclusion_text'] = st.text_area(
             "IV – Final Conclusion Text *",
-            value=d.get('conclusion_text', default_conc),
+            value=curr or default_conc,
             height=80, key="rd3_conclusion"
         )
         d['conclusion_yn'] = st.radio("Conclusion: Works adapted to project?",
