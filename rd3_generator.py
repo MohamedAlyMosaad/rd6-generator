@@ -192,30 +192,18 @@ def build_rd3_reference(eng_full, nt_ft, idi_no, taw_pol, ins_type='Malath'):
 
 def _make_sig_line(eng_full, reviewer, manager):
     """
-    Build the 3 signature paragraph texts matching AHA layout exactly.
-    Uses space-padding to create 3-column visual layout.
-    Col1 (~pos 0): Author / Eng. name
-    Col2 (~pos 76): ENGINEER IN CHARGE / Reviewer:
-    Col3 (~pos 131): HEAD OF LOCAL DEPARTMENT / OR MANAGER / Eng. manager
+    AHA format: Line2 = Eng. (no name - stamp area), Line3 = reviewer + manager names.
     """
-    # Line 1: Author header (154 chars matching AHA)
-    author_line = '\tAuthor:' + ' ' * 78 + 'ENGINEER IN CHARGE' + ' ' * 26 + 'HEAD OF LOCAL DEPARTMENT'
-
-    # Line 2: Eng. name + Reviewer label (155 chars)
-    eng_str = 'Eng. ' + eng_full          # variable length
-    pad1 = max(1, 76 - len(eng_str))       # space between name and Reviewer:
-    pad2 = max(1, 155 - len(eng_str) - pad1 - 9 - 10)  # space before OR MANAGER
-    name_line = eng_str + ' ' * pad1 + 'Reviewer:' + ' ' * pad2 + 'OR MANAGER'
-
-    # Line 3: Reviewer name + Manager (167 chars)
-    reviewer_str = 'Eng. ' + reviewer
-    pad3 = 65                              # leading spaces (fixed)
-    pad4 = max(1, 131 - pad3 - len(reviewer_str))  # space before manager
-    manager_str = 'Eng. ' + manager.upper()
-    reviewer_line = ' ' * pad3 + reviewer_str + ' ' * pad4 + manager_str + ' ' * 19
-
+    author_line = "\tAuthor:" + " " * 78 + "ENGINEER IN CHARGE" + " " * 26 + "HEAD OF LOCAL DEPARTMENT"
+    # Line 2: Eng. prefix only (no printed name — stamp/ink pad area)
+    name_line = "Eng." + " " * 81 + "Reviewer:" + " " * 36 + "OR MANAGER"
+    # Line 3: reviewer + manager names (left column blank for physical signature)
+    rev_str = "Eng. " + (reviewer.upper() if reviewer else "")
+    mgr_str = "Eng. " + (manager.upper() if manager else "")
+    pad3 = 65
+    pad4 = max(1, 132 - pad3 - len(rev_str))
+    reviewer_line = " " * pad3 + rev_str + " " * pad4 + mgr_str
     return author_line, name_line, reviewer_line
-
 
 def _fill_signature_blocks(body, data):
     """Replace all 4 signature placeholder blocks in body paragraphs."""
