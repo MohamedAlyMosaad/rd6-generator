@@ -141,8 +141,8 @@ if step == 1:
                               placeholder="+966 xxxxxxxxx", key="rd3_phone")
         email = st.text_input("✉️ Email *",
                               placeholder="xxxx@socotec.com", key="rd3_email")
-        phase  = st.selectbox("Phase / Speciality",
-                              ["Waterproofing", "Senior", "Mid-Level", "Junior"],
+        phase  = st.selectbox("Phase / Seniority",
+                              ["Senior", "Mid-Level", "Junior"],
                               key="rd3_phase")
         degree = st.text_input("Degree", value="Bachelor", key="rd3_degree")
         spec   = st.text_input("Speciality", value="Civil Engineer", key="rd3_spec")
@@ -359,12 +359,14 @@ elif step == 2:
                     st.success("✅ Final visit date: **{}** · Ref: **{}** · Inspector: **{}**".format(
                         final_date, final_ref, final_insp))
                 # Add to visits table if not already there
-                if st.button("Add final visit to table", key="rd3_add_final_visit"):
+                # Auto-add to visits table (replace any existing entry with same ref)
+                existing_refs = [v.get('ref','') for v in st.session_state.rd3_visits]
+                if final_ref not in existing_refs and final_date:
                     st.session_state.rd3_visits.append({
                         'ref': final_ref, 'date': final_date,
                         'inspector': final_insp, 'part': final_subj,
                     })
-                    st.rerun()
+                    st.success("✅ Visit added to table automatically")
                 # Store images as attachments
                 if vd.get('images'):
                     st.info("📷 {} photos extracted — will be added as attachments".format(
@@ -662,28 +664,34 @@ elif step == 5:
 
     # Description template library
     ROOF_TEMPLATES = {
-        "Bituminous membrane — residential roof + wet areas": {
-            "i1": "The waterproofing had been executed to the roof top and the uncovered terraces",
-            "i2": "The waterproofing system consists of a bituminous primer and two layers of 4mm bituminous membranes (SABIT), protected by a sand bed with ceramic tiles.",
-            "i3": "The waterproofing covered 7 cm height as plinths above the final level at the junctions with walls and parapets.",
+        "Bituminous membrane — 2 layers (residential + wet areas)": {
+            "i1": "The waterproofing works have been executed on the flat reinforced concrete roof slab and uncovered terraces at the top floor of the building, with a slight slope towards the drainage outlets. Wet areas (kitchen and toilets) on the floor below are also waterproofed.",
+            "i2": "The waterproofing system consists of a bituminous primer layer and two layers of 4mm reinforced bituminous membranes (SABIT), protected by a sand screed bed finished with ceramic tiles.",
+            "i3": "The waterproofing system is raised 7 cm as plinths at the junctions with parapets, walls, and vertical surfaces above the finished floor level.",
             "other": "Wet areas (Kitchen and toilets)", "types": ["ROOF", "OTHER"],
         },
-        "Bituminous membrane — single layer": {
-            "i1": "The waterproofing had been executed to the roof top and the uncovered terraces",
-            "i2": "The waterproofing system consists of a bituminous primer and one layer of 4mm bituminous membranes (SABIT), protected by a sand bed with ceramic tiles.",
-            "i3": "The waterproofing covered 7 cm height as plinths above the final level at the junctions with walls and parapets.",
+        "Bituminous membrane — 1 layer": {
+            "i1": "The waterproofing works have been executed on the flat reinforced concrete roof slab and uncovered terraces at the top floor of the building, with a slight slope towards the drainage outlets.",
+            "i2": "The waterproofing system consists of a bituminous primer layer and one layer of 4mm reinforced bituminous membrane (SABIT), protected by a sand screed bed finished with ceramic tiles.",
+            "i3": "The waterproofing system is raised 7 cm as plinths at the junctions with parapets, walls, and vertical surfaces above the finished floor level.",
             "other": "Wet areas (Kitchen and toilets)", "types": ["ROOF", "OTHER"],
+        },
+        "Foam spray (polyurethane) — flat roof": {
+            "i1": "The waterproofing works have been executed on the flat reinforced concrete roof slab. The roof surface is prepared with a screed concrete layer sloped towards the internal drainage outlets.",
+            "i2": "The waterproofing system consists of a polyurethane foam (PUF) spray layer applied directly to the concrete surface, providing both waterproofing and thermal insulation. The foam is protected by a reflective coating or screed finish.",
+            "i3": "The waterproofing foam is raised at all junctions with parapets, walls, and pipe penetrations, sealed with polyurethane sealant.",
+            "other": "", "types": ["ROOF"],
         },
         "Cement-based waterproofing (Fosam)": {
-            "i1": "The waterproofing had been executed to the roof top and the uncovered terraces",
-            "i2": "The waterproofing materials consists of two cement based waterproofing (Fosam) layers protected by one bed of sand with ceramic tiles.",
-            "i3": "The waterproofing covered 7 cm height as plinths above the final level at the junctions with walls and parapets.",
+            "i1": "The waterproofing works have been executed on the flat reinforced concrete roof slab and uncovered terraces, with a slight slope towards the drainage points.",
+            "i2": "The waterproofing system consists of two coats of cement-based waterproofing (Fosam), protected by a sand screed bed finished with ceramic tiles.",
+            "i3": "The waterproofing is raised 7 cm as plinths at all junctions with vertical walls and parapets above the finished floor level.",
             "other": "Wet areas (Kitchen and toilets)", "types": ["ROOF", "OTHER"],
         },
         "Metal panel roof (industrial/commercial)": {
-            "i1": "The roof consists of sloped metal panels with rockwool layer laid on metal ribs fixed to a metal structure supported by metal columns.",
-            "i2": "The waterproofing system consists of sloped metal panels with rockwool layer fixed by screws with silicone around the screws.",
-            "i3": "The junctions are treated with metal flashing and silicone sealant around all penetrations and edges.",
+            "i1": "The roof consists of sloped profiled metal panels with rockwool insulation layer, laid on metal purlins fixed to a steel portal frame structure. The roof slope directs rainwater to external gutters.",
+            "i2": "The waterproofing is provided by the sloped metal panel system itself, with polyurethane sealant applied at all overlaps, fixings, and penetrations.",
+            "i3": "All junctions between roof panels and walls/facades are treated with metal flashing pieces and sealed with polyurethane sealant. All pipe and cable penetrations are sealed.",
             "other": "", "types": ["ROOF"],
         },
         "Custom (fill manually)": {"i1":"","i2":"","i3":"","other":"","types":[]},
